@@ -1,0 +1,961 @@
+/** @enum {number} */
+export const ValueType = Object.freeze({
+    Void:                    0x00,
+    Integer:                 0x01,
+    Double:                  0x02,
+    FunctionReference:       0x03,
+    NativeFunctionReference: 0x04,
+    List:                    0x05,
+    String:                  0x06,
+    Custom:                  0xFF,
+});
+
+/**
+ * @typedef {object} Value
+ * @property {ValueType} type
+ * @property {number|string} [value]
+ */
+
+/**
+ * @param {ValueType} valueType
+ * @returns {string}
+ */
+export function valueTypeToString(valueType) {
+    switch (valueType) {
+    case ValueType.Void:                    return "Void";
+    case ValueType.Integer:                 return "Integer";
+    case ValueType.Double:                  return "Double";
+    case ValueType.FunctionReference:       return "FunctionReference";
+    case ValueType.NativeFunctionReference: return "NativeFunctionReference";
+    case ValueType.List:                    return "List";
+    case ValueType.String:                  return "String";
+    case ValueType.Custom:                  return "Custom";
+    }
+    throw new Error(`unknown value type ${valueType}`);
+}
+
+/** @enum {number} */
+export const InstructionCode = Object.freeze({
+    PushInt:                     0x01,
+    PushDbl:                     0x02,
+    PushFunctionReference:       0x03,
+    PushNativeFunctionReference: 0x04,
+    PushEmptyList:               0x05,
+    Pack:                        0x06,
+    Pop:                         0x0D,
+    Swap:                        0x0E,
+    Dup:                         0x0F,
+    PushConst:                   0x10,
+    PushLocal:                   0x11,
+    MoveLocal:                   0x12,
+    PopIntoLocal:                0x13,
+    CopyIntoLocal:               0x14,
+    PushGlobal:                  0x15,
+    MoveGlobal:                  0x16,
+    PopIntoGlobal:               0x17,
+    CopyIntoGlobal:              0x18,
+    Return:                      0x20,
+    Call:                        0x21,
+    CallNative:                  0x22,
+    ICall:                       0x2F,
+    DynSum:                      0x30,
+    DynSub:                      0x31,
+    DynMul:                      0x32,
+    DynDiv:                      0x33,
+    Mod:                         0x34,
+    BitAnd:                      0x38,
+    BitOr:                       0x39,
+    BitNot:                      0x3A,
+    BitXor:                      0x3B,
+    BitShiftLeft:                0x3C,
+    BitShiftRight:               0x3D,
+    Floor:                       0x40,
+    Ceil:                        0x41,
+    Compare:                     0x50,
+    Equals:                      0x51,
+    J:                           0x60,
+    JZ:                          0x61,
+    JNZ:                         0x62,
+    JGZ:                         0x63,
+    JGEZ:                        0x64,
+    JLZ:                         0x65,
+    JLEZ:                        0x66,
+    IsEmpty:                     0x70,
+    Length:                      0x71,
+    Prepend:                     0x72,
+    Append:                      0x73,
+    Index:                       0x74,
+    Concat:                      0x78,
+    Head:                        0x79,
+    Tail:                        0x7A,
+    Unpack:                      0x7B,
+    Prefix:                      0x7C,
+    Suffix:                      0x7D,
+    Substr:                      0x7E,
+    IsVoid:                      0x80,
+    IsInteger:                   0x81,
+    IsDouble:                    0x82,
+    IsFunctionReference:         0x83,
+    IsNativeFunctionReference:   0x84,
+    IsList:                      0x85,
+    IsString:                    0x86,
+    IsCustom:                    0x8F,
+    IsNumber:                    0x90,
+    IsAnyFunctionReference:      0x91,
+});
+
+/**
+ * @param {InstructionCode} instructionCode
+ * @param {number} value
+ * @returns {boolean}
+ */
+export function shouldJump(instructionCode, value) {
+    switch (instructionCode) {
+    case InstructionCode.J:    return true;
+    case InstructionCode.JZ:   return value === 0;
+    case InstructionCode.JNZ:  return value !== 0;
+    case InstructionCode.JGZ:  return value >   0;
+    case InstructionCode.JGEZ: return value >=  0;
+    case InstructionCode.JLZ:  return value <   0;
+    case InstructionCode.JLEZ: return value <=  0;
+    }
+    return false;
+}
+
+/**
+ * @param {InstructionCode} instructionCode
+ * @returns {string}
+ */
+export function instructionCodeToString(instructionCode) {
+    switch (instructionCode) {
+    case InstructionCode.PushInt:                     return "PushInt";
+    case InstructionCode.PushDbl:                     return "PushDbl";
+    case InstructionCode.PushFunctionReference:       return "PushFunctionReference";
+    case InstructionCode.PushNativeFunctionReference: return "PushNativeFunctionReference";
+    case InstructionCode.PushEmptyList:               return "PushEmptyList";
+    case InstructionCode.Pack:                        return "Pack";
+    case InstructionCode.Pop:                         return "Pop";
+    case InstructionCode.Swap:                        return "Swap";
+    case InstructionCode.Dup:                         return "Dup";
+    case InstructionCode.PushConst:                   return "PushConst";
+    case InstructionCode.PushLocal:                   return "PushLocal";
+    case InstructionCode.MoveLocal:                   return "MoveLocal";
+    case InstructionCode.PopIntoLocal:                return "PopIntoLocal";
+    case InstructionCode.CopyIntoLocal:               return "CopyIntoLocal";
+    case InstructionCode.PushGlobal:                  return "PushGlobal";
+    case InstructionCode.MoveGlobal:                  return "MoveGlobal";
+    case InstructionCode.PopIntoGlobal:               return "PopIntoGlobal";
+    case InstructionCode.CopyIntoGlobal:              return "CopyIntoGlobal";
+    case InstructionCode.Return:                      return "Return";
+    case InstructionCode.Call:                        return "Call";
+    case InstructionCode.CallNative:                  return "CallNative";
+    case InstructionCode.ICall:                       return "ICall";
+    case InstructionCode.DynSum:                      return "DynSum";
+    case InstructionCode.DynSub:                      return "DynSub";
+    case InstructionCode.DynMul:                      return "DynMul";
+    case InstructionCode.DynDiv:                      return "DynDiv";
+    case InstructionCode.Mod:                         return "Mod";
+    case InstructionCode.BitAnd:                      return "BitAnd";
+    case InstructionCode.BitOr:                       return "BitOr";
+    case InstructionCode.BitNot:                      return "BitNot";
+    case InstructionCode.BitXor:                      return "BitXor";
+    case InstructionCode.BitShiftLeft:                return "BitShiftLeft";
+    case InstructionCode.BitShiftRight:               return "BitShiftRight";
+    case InstructionCode.Floor:                       return "Floor";
+    case InstructionCode.Ceil:                        return "Ceil";
+    case InstructionCode.Compare:                     return "Compare";
+    case InstructionCode.Equals:                      return "Equals";
+    case InstructionCode.J:                           return "J";
+    case InstructionCode.JZ:                          return "JZ";
+    case InstructionCode.JNZ:                         return "JNZ";
+    case InstructionCode.JGZ:                         return "JGZ";
+    case InstructionCode.JGEZ:                        return "JGEZ";
+    case InstructionCode.JLZ:                         return "JLZ";
+    case InstructionCode.JLEZ:                        return "JLEZ";
+    case InstructionCode.IsEmpty:                     return "IsEmpty";
+    case InstructionCode.Length:                      return "Length";
+    case InstructionCode.Prepend:                     return "Prepend";
+    case InstructionCode.Append:                      return "Append";
+    case InstructionCode.Index:                       return "Index";
+    case InstructionCode.Concat:                      return "Concat";
+    case InstructionCode.Head:                        return "Head";
+    case InstructionCode.Tail:                        return "Tail";
+    case InstructionCode.Unpack:                      return "Unpack";
+    case InstructionCode.Prefix:                      return "Prefix";
+    case InstructionCode.Suffix:                      return "Suffix";
+    case InstructionCode.Substr:                      return "Substr";
+    case InstructionCode.IsVoid:                      return "IsVoid";
+    case InstructionCode.IsInteger:                   return "IsInteger";
+    case InstructionCode.IsDouble:                    return "IsDouble";
+    case InstructionCode.IsFunctionReference:         return "IsFunctionReference";
+    case InstructionCode.IsNativeFunctionReference:   return "IsNativeFunctionReference";
+    case InstructionCode.IsList:                      return "IsList";
+    case InstructionCode.IsString:                    return "IsString";
+    case InstructionCode.IsCustom:                    return "IsCustom";
+    case InstructionCode.IsNumber:                    return "IsNumber";
+    case InstructionCode.IsAnyFunctionReference:      return "IsAnyFunctionReference";
+    }
+    throw new Error(`unknown instruction code ${instructionCode}`);
+}
+
+/**
+ * @typedef {object} Instruction
+ * @property {InstructionCode} code
+ * @property {number} arg0
+ */
+
+/**
+ * @typedef {object} FunctionDefinition
+ * @property {string} name
+ * @property {number} arity
+ * @property {number} returns
+ * @property {number} stackArity
+ * @property {number} localsCount
+ * @property {Instruction[]} [code] if undefined, same as empty array
+ * TODO: Debug symbols
+ */
+
+/**
+ * @typedef {(context: ExecutionContext) => Promise<void>|void} NativeFunction
+ */
+
+/**
+ * @typedef {object} GlobalDefinition
+ * @property {string} name
+ * @property {Value} initialValue
+ * @property {boolean} isConstant
+ * TODO: Debug symbols
+ */
+
+/**
+ * @typedef {object} GlobalInstance
+ * @property {string} name
+ * @property {Value} value
+ * @property {boolean} isConstant
+ * TODO: Debug symbols
+ */
+
+export class IndexOutOfBoundsError extends Error{}
+export class FunctionNotFoundError extends Error{}
+export class UnboundNativeError    extends Error{}
+export class StackUnderflowError   extends Error{}
+export class ValueTypeError        extends Error{}
+
+export class Module {
+    /** @type {FunctionDefinition[]}    */ #functions;
+    /** @type {FunctionDefinition[]}    */ #nativeBindings;
+    /** @type {(NativeFunction|null)[]} */ #nativeFunctions;
+    /** @type {GlobalDefinition[]}      */ #globals;
+    /** @type {Value[]}                 */ #constants;
+
+    constructor() {
+        this.#functions       = [];
+        this.#nativeBindings  = [];
+        this.#nativeFunctions = [];
+        this.#globals         = [];
+        this.#constants       = [];
+    }
+
+    /** @param  {...FunctionDefinition} functionDefinitions */
+    addFunctions(...functionDefinitions) {
+        this.#functions.push(...functionDefinitions);
+    }
+
+    /** @param  {...FunctionDefinition} nativeBindings */
+    addNativeBindings(...nativeBindings) {
+        this.#nativeBindings.push(...nativeBindings);
+        for (let i = 0; i < nativeBindings.length; ++i) {
+            this.#nativeFunctions.push(null);
+        }
+    }
+
+    /** @param  {...GlobalDefinition} globalDefinitions */
+    addGlobals(...globalDefinitions) {
+        this.#globals.push(...globalDefinitions);
+    }
+
+    /** @param  {...Value} values */
+    addConstants(...values) {
+        this.#constants.push(...values);
+    }
+
+    /**
+     * @throws {IndexOutOfBoundsError}
+     * @param {number} index
+     * @returns {FunctionDefinition}
+     */
+    getFunctionByIndex(index) {
+        if (index < 0 || index >= this.#functions.length)
+            throw new IndexOutOfBoundsError(`function index ${index} out of bounds [0;${this.#functions.length})`);
+        return this.#functions[index];
+    }
+
+    /**
+     * @param {string} name
+     * @returns {FunctionDefinition|undefined}
+     */
+    searchFunctionByName(name) {
+        for (let i = this.#functions.length-1; i >= 0; --i) {
+            const fn = this.#functions[i];
+            if (fn.name === name)
+                return fn;
+        }
+        return undefined;
+    }
+
+    /**
+     * @throws {IndexOutOfBoundsError}
+     * @param {number} index
+     * @returns {[FunctionDefinition, NativeFunction|null]}
+     */
+    getNativeByIndex(index) {
+        if (index < 0 || index >= this.#nativeBindings.length)
+            throw new IndexOutOfBoundsError(`native function index ${index} out of bounds [0;${this.#nativeBindings.length})`);
+        return [ this.#nativeBindings[index], this.#nativeFunctions[index] ];
+    }
+
+    /** @returns {GlobalInstance[]} */
+    createGlobals() {
+        return this.#globals.map(definition => ({
+            name: definition.name,
+            value: definition.initialValue.clone(),
+            isConstant: definition.isConstant,
+        }));
+    }
+
+    /**
+     * @throws {IndexOutOfBoundsError}
+     * @param {number} index
+     * @returns {Value}
+     */
+    createConstantByIndex(index) {
+        if (index < 0 || index >= this.#constants.length)
+            throw new IndexOutOfBoundsError(`constant index ${index} out of bounds [0;${this.#constants.length})`);
+        return this.#constants[index].clone();
+    }
+
+    /**
+     * @param {string} name
+     * @param {NativeFunction} nativeFunction
+     * @returns {boolean}
+     */
+    bindNativeByName(name, nativeFunction) {
+        for (let i = this.#nativeBindings.length-1; i >= 0; --i) {
+            const fn = this.#nativeBindings[i];
+            if (fn.name === name) {
+                this.#nativeFunctions[i] = nativeFunction;
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+/**
+ * @typedef {object} Frame
+ * @property {FunctionDefinition} function
+ * @property {number} instructionIndex
+ * @property {Value[]} stack
+ * @property {Value[]} locals
+ */
+
+function cloneValueList(list) {
+    const cloned = new Array(list.length);
+    for (let i = 0; i < cloned.length; ++i) {
+        cloned[i] = list[i].clone();
+    }
+    return cloned;
+}
+
+export class Value {
+    /** @type {ValueType} */ #type;
+    /** @type {undefined|number|string|Value[]} */ #value;
+
+    /** @param {Value} [other] if specified, it is copied */
+    constructor(other) {
+        if (other == null) {
+            this.setVoid();
+        } else {
+            switch (other.type) {
+            case ValueType.Void:                    this.setVoid();                               break;
+            case ValueType.Integer:                 this.setInteger(other.value);                 break;
+            case ValueType.Double:                  this.setDouble(other.value);                  break;
+            case ValueType.FunctionReference:       this.setFunctionReference(other.value);       break;
+            case ValueType.NativeFunctionReference: this.setNativeFunctionReference(other.value); break;
+            case ValueType.List:                    this.setList(other.value);                    break;
+            case ValueType.String:                  this.setString(other.value);                  break;
+            case ValueType.Custom:
+            default:
+                throw new Error(`copy not implemented for ${other.type} (${valueTypeToString(other.type)})`);
+            }
+        }
+    }
+
+    get type()   { return this.#type;  }
+    get value()  { return this.#value; }
+    get sValue() { return valueTypeToString(this.value); }
+
+    setVoid() {
+        this.#type  = ValueType.Void;
+        this.#value = undefined;
+        return this;
+    }
+
+    /** @throws {ValueTypeError} @param {number} value */
+    setInteger(value) {
+        if (!Number.isInteger(value))
+            throw new ValueTypeError(`${value} is not an integer`);
+        this.#type  = ValueType.Integer;
+        this.#value = value;
+        return this;
+    }
+
+    /** @param {number} value */
+    setDouble(value) {
+        this.#type  = ValueType.Double;
+        this.#value = value;
+        return this;
+    }
+
+    /** @param {number} value */
+    setNumber(value) {
+        return Number.isInteger(value)
+            ? this.setInteger(value)
+            : this.setDouble(value);
+    }
+
+    /** @throws {ValueTypeError} @param {number} value */
+    setFunctionReference(value) {
+        if (!Number.isInteger(value))
+            throw new ValueTypeError(`${value} is not a function reference`);
+        this.#type  = ValueType.FunctionReference;
+        this.#value = value;
+        return this;
+    }
+
+    /** @throws {ValueTypeError} @param {number} value */
+    setNativeFunctionReference(value) {
+        if (!Number.isInteger(value))
+            throw new ValueTypeError(`${value} is not a native function reference`);
+        this.#type  = ValueType.NativeFunctionReference;
+        this.#value = value;
+        return this;
+    }
+
+    /** @param {Value[]} value */
+    setList(value) {
+        this.#type  = ValueType.List;
+        this.#value = cloneValueList(value);
+        return this;
+    }
+
+    /** @param {string} value */
+    setString(value) {
+        this.#type  = ValueType.String;
+        this.#value = value;
+        return this;
+    }
+
+    /** @param {object} value */
+    setCustom(value) {
+        throw new Error("setCustom not implemented");
+    }
+
+    isInteger()                 { return this.#type === ValueType.Integer;                 }
+    isDouble()                  { return this.#type === ValueType.Double;                  }
+    isNumber()                  { return this.isInteger() || this.isDouble();              }
+    isFunctionReference()       { return this.#type === ValueType.FunctionReference;       }
+    isNativeFunctionReference() { return this.#type === ValueType.NativeFunctionReference; }
+    isList()                    { return this.#type === ValueType.List;                    }
+    isString()                  { return this.#type === ValueType.String;                  }
+    isCustom()                  { return this.#type === ValueType.Custom;                  }
+
+    /** @throws {ValueTypeError} @param {number} value */
+    static fromInteger(value)                 { return new Value().setInteger(value);                 }
+    /** @param {number} value */
+    static fromDouble(value)                  { return new Value().setDouble(value);                  }
+    /** @param {number} value */
+    static fromNumber(value)                  { return new Value().setNumber(value);                  }
+    /** @throws {ValueTypeError} @param {number} value */
+    static fromFunctionReference(value)       { return new Value().setFunctionReference(value);       }
+    /** @throws {ValueTypeError} @param {number} value */
+    static fromNativeFunctionReference(value) { return new Value().setNativeFunctionReference(value); }
+    /** @param {Value[]} value */
+    static fromList(value)                    { return new Value().setList(value);                    }
+    /** @param {string} value */
+    static fromString(value)                  { return new Value().setString(value);                  }
+    /** @param {object} value */
+    static fromCustom(value)                  { return new Value().setCustom(value);                  }
+
+    /** @returns {Value} */
+    clone() { return new Value(this); }
+}
+
+/**
+ * @throws {StackUnderflowError}
+ * @param {Value[]} stack
+ * @param {InstructionCode} instructionCode
+ * @param {number} valuesToGet
+ * @returns {Value[]}
+ */
+function getValuesFromStack(stack, instructionCode, valuesToGet) {
+    if (stack.length < valuesToGet) {
+        throw new StackUnderflowError(`${instructionCodeToString(instructionCode)} requires ${valuesToGet} values, got ${stack.length}`);
+    }
+    const values = new Array(valuesToGet);
+    for (let i = 0; i < values.length; ++i) {
+        values[values.length-i-1] = stack[stack.length-i-1];
+    }
+    return values;
+}
+
+/**
+ * @throws {StackUnderflowError}
+ * @param {Value[]} stack
+ * @param {InstructionCode} instructionCode
+ * @param {number} valuesToPop
+ * @returns {Value[]}
+ */
+function popValuesFromStack(stack, instructionCode, valuesToPop) {
+    if (stack.length < valuesToPop) {
+        throw new StackUnderflowError(`${instructionCodeToString(instructionCode)} requires ${valuesToPop} values, got ${stack.length}`);
+    }
+    const values = new Array(valuesToPop);
+    for (let i = 0; i < values.length; ++i) {
+        values[values.length-i-1] = stack.pop();
+    }
+    return values;
+}
+
+export class ExecutionContext {
+    #module;
+    /** @type {Value[]} */
+    #globals;
+    /** @type {Value[]} */
+    #stack;
+    /** @type {Frame[]} */
+    #callStack;
+
+    /**
+     * @param {Module} module
+     */
+    constructor(module) {
+        this.#module    = module;
+        this.#globals   = module.createGlobals();
+        this.#stack     = [];
+        this.#callStack = [];
+    }
+
+    get module() { return this.#module; }
+    get stack()  { return this.#stack;  }
+
+    get currentStack() { return this.#callStack.length > 0 ? this.currentFrame.stack : this.#stack; }
+    get currentFrame() { return this.#callStack[this.#callStack.length-1]; }
+
+    get isDone() { return this.#callStack.length <= 0; }
+
+    /**
+     * @throws {FunctionNotFoundError}
+     * @param {string} name
+     */
+    callFunctionByName(name) {
+        const fn = this.#module.searchFunctionByName(name);
+        if (fn == null) throw new FunctionNotFoundError(`function '${name}' not found`);
+        return this.callFunction(fn);
+    }
+
+    /**
+     * @throws {StackUnderflowError}
+     * @param {FunctionDefinition} fn
+     */
+    callFunction(fn) {
+        const callerStack = this.currentStack;
+        const totalArgsCount = fn.stackArity + fn.arity;
+        if (callerStack.length < totalArgsCount)
+            throw new StackUnderflowError(`not enough arguments to call '${fn.name}' required ${totalArgsCount}, got ${callerStack.length}`);
+
+        const calleeFrame = {
+            function: fn,
+            instructionIndex: 0,
+            stack:  new Array(fn.stackArity),
+            locals: new Array(fn.localsCount),
+        };
+
+        for (let i = fn.arity-1; i >= 0; --i) {
+            calleeFrame.locals[i] = callerStack.pop();
+        }
+
+        for (let i = fn.arity; i < calleeFrame.locals.length; ++i) {
+            calleeFrame.locals[i] = new Value();
+        }
+
+        for (let i = calleeFrame.stack.length-1; i >= 0; --i) {
+            calleeFrame.stack[i] = callerStack.pop();
+        }
+
+        this.#callStack.push(calleeFrame);
+    }
+
+    /**
+     * @throws {IndexOutOfBoundsError}
+     * @param {number} index
+     * @returns {GlobalInstance}
+     */
+    getGlobalByIndex(index) {
+        if (index < 0 || index >= this.#globals.length)
+            throw new IndexOutOfBoundsError(`global index ${index} out of bounds [0;${this.#globals.length})`);
+        return this.#globals[index];
+    }
+
+    /**
+     * async to support async native functions
+     * @throws any runtime error
+     */
+    async step() {
+        if (this.isDone) return;
+
+        const calleeFrame = this.currentFrame;
+        if (calleeFrame.function.code != null && calleeFrame.instructionIndex < calleeFrame.function.code.length) {
+            await this.#executeInstruction(calleeFrame);
+            return;
+        }
+
+        if (calleeFrame.stack.length < calleeFrame.function.returns)
+            throw new StackUnderflowError("not enough values on the stack to return");
+
+        this.#callStack.pop();
+        const calleeStackBase = calleeFrame.stack.length-calleeFrame.function.returns;
+        const callerStack = this.currentStack;
+        for (let i = 0; i < calleeFrame.function.returns; ++i) {
+            callerStack.push(calleeFrame.stack[calleeStackBase+i]);
+        }
+    }
+
+    /** @throws any runtime error */
+    async run() {
+        while (!this.isDone) {
+            await this.step();
+        }
+    }
+
+    /**
+     * runs the context asynchronously so that the browser may tick during execution
+     * @throws any runtime error
+     * @param {number} [stepsPerFrame] steps to take before giving control back to the browser. must be > 0
+     */
+    async runAsync(stepsPerFrame=2048) {
+        if (stepsPerFrame <= 0)
+            throw new RangeError(`stepsPerFrame must be > 0, got ${stepsPerFrame}`);
+        let frameStep = 0;
+        while (!this.isDone) {
+            await this.step();
+            ++frameStep;
+
+            if (frameStep >= stepsPerFrame) {
+                await new Promise(res => setTimeout(res));
+                frameStep = 0;
+            }
+        }
+    }
+
+    /**
+     * async to support async native functions
+     * @throws any runtime error
+     * @param {Frame} frame
+     */
+    async #executeInstruction(frame) {
+        const instruction = frame.function.code[frame.instructionIndex++];
+        switch (instruction.code) {
+        case InstructionCode.PushInt: {
+            frame.stack.push(Value.fromInteger(instruction.arg0));
+        } break;
+        case InstructionCode.PushDbl: {
+            frame.stack.push(Value.fromDouble(instruction.arg0));
+        } break;
+        case InstructionCode.PushEmptyList: {
+            frame.stack.push(Value.fromList([]));
+        } break;
+        case InstructionCode.Pack: {
+            const packCount  = Math.max(0, instruction.arg0);
+            const valueArray = popValuesFromStack(frame.stack, instruction.code, packCount);
+            frame.stack.push(Value.fromList(valueArray));
+        } break;
+        case InstructionCode.Pop: {
+            const popCount = Math.max(1, instruction.arg0);
+            popValuesFromStack(frame.stack, instruction.code, popCount)
+        } break;
+        case InstructionCode.Swap: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            frame.stack.push(b, a);
+        } break;
+        case InstructionCode.Dup: {
+            const [value]  = getValuesFromStack(frame.stack, instruction.code, 1)
+            const dupCount = Math.max(1, instruction.arg0);
+            for (let i = 0; i < dupCount; ++i) {
+                frame.stack.push(value.clone());
+            }
+        } break;
+        case InstructionCode.PushConst: {
+            const value = this.#module.createConstantByIndex(instruction.arg0);
+            frame.stack.push(value);
+        } break;
+        case InstructionCode.PushLocal: {
+            const localIndex = instruction.arg0;
+            if (localIndex < 0 || localIndex >= frame.locals.length)
+                throw new IndexOutOfBoundsError(`local index ${localIndex} out of bounds [0;${frame.locals.length})`);
+            const value = frame.locals[localIndex];
+            frame.stack.push(value.clone());
+        } break;
+        case InstructionCode.MoveLocal: {
+            const localIndex = instruction.arg0;
+            if (localIndex < 0 || localIndex >= frame.locals.length)
+                throw new IndexOutOfBoundsError(`local index ${localIndex} out of bounds [0;${frame.locals.length})`);
+            const value = frame.locals[localIndex];
+            frame.locals[localIndex] = new Value();
+            frame.stack.push(value);
+        } break;
+        case InstructionCode.PopIntoLocal: {
+            const [ value ] = popValuesFromStack(frame.stack, instruction.code, 1);
+            const localIndex = instruction.arg0;
+            if (localIndex < 0 || localIndex >= frame.locals.length)
+                throw new IndexOutOfBoundsError(`local index ${localIndex} out of bounds [0;${frame.locals.length})`);
+            frame.locals[localIndex] = value;
+        } break;
+        case InstructionCode.CopyIntoLocal: {
+            const [ value ] = getValuesFromStack(frame.stack, instruction.code, 1);
+            const localIndex = instruction.arg0;
+            if (localIndex < 0 || localIndex >= frame.locals.length)
+                throw new IndexOutOfBoundsError(`local index ${localIndex} out of bounds [0;${frame.locals.length})`);
+            frame.locals[localIndex] = value.clone();
+        } break;
+        case InstructionCode.PushGlobal: {
+            const global = this.getGlobalByIndex(instruction.arg0);
+            frame.stack.push(global.value.clone());
+        } break;
+        case InstructionCode.MoveGlobal: {
+            const global = this.getGlobalByIndex(instruction.arg0);
+            const value  = global.value;
+            global.value = new Value();
+            frame.stack.push(value);
+        } break;
+        case InstructionCode.PopIntoGlobal: {
+            const [ value ] = popValuesFromStack(frame.stack, instruction.code, 1);
+            const global = this.getGlobalByIndex(instruction.arg0);
+            global.value = value;
+        } break;
+        case InstructionCode.CopyIntoGlobal: {
+            const [ value ] = getValuesFromStack(frame.stack, instruction.code, 1);
+            const global = this.getGlobalByIndex(instruction.arg0);
+            global.value = value.clone();
+        } break;
+        case InstructionCode.Return: {
+            frame.instructionIndex = frame.function.code.length;
+        } break;
+        case InstructionCode.Call: {
+            const functionDefinition = this.#module.getFunctionByIndex(instruction.arg0);
+            this.callFunction(functionDefinition);
+        } break;
+        case InstructionCode.CallNative: {
+            const [nativeBinding, nativeFunction] = this.#module.getNativeByIndex(instruction.arg0);
+            if (nativeFunction == null)
+                throw new UnboundNativeError(`native function '${nativeBinding.name}' (${instruction.arg0}) not bound`);
+            this.callFunction(nativeBinding);
+            await nativeFunction(this);
+        } break;
+        case InstructionCode.DynSum: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isNumber() || !b.isNumber())
+                throw new ValueTypeError("cannot perform addition between non-numeric values");
+            if (a.isInteger() && b.isInteger()) {
+                frame.stack.push(Value.fromInteger(a.value + b.value));
+            } else {
+                frame.stack.push(Value.fromDouble(a.value + b.value));
+            }
+        } break;
+        case InstructionCode.DynSub: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isNumber() || !b.isNumber())
+                throw new ValueTypeError("cannot perform subtraction between non-numeric values");
+            if (a.isInteger() && b.isInteger()) {
+                frame.stack.push(Value.fromInteger(a.value - b.value));
+            } else {
+                frame.stack.push(Value.fromDouble(a.value - b.value));
+            }
+        } break;
+        case InstructionCode.DynMul: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isNumber() || !b.isNumber())
+                throw new ValueTypeError("cannot perform multiplication between non-numeric values");
+            if (a.isInteger() && b.isInteger()) {
+                frame.stack.push(Value.fromInteger(a.value * b.value));
+            } else {
+                frame.stack.push(Value.fromDouble(a.value * b.value));
+            }
+        } break;
+        case InstructionCode.DynDiv: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isNumber() || !b.isNumber())
+                throw new ValueTypeError("cannot perform division between non-numeric values");
+            if (a.isInteger() && b.isInteger()) {
+                // Integer division
+                frame.stack.push(Value.fromInteger(Math.floor(a.value / b.value)));
+            } else {
+                frame.stack.push(Value.fromDouble(a.value / b.value));
+            }
+        } break;
+        case InstructionCode.Mod: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isInteger() || !b.isInteger())
+                throw new ValueTypeError("cannot perform modulus between non-integer values");
+            frame.stack.push(Value.fromInteger(a.value % b.value));
+        } break;
+        case InstructionCode.Floor: {
+            const [value] = getValuesFromStack(frame.stack, instruction.code, 1);
+            value.setInteger(Math.floor(value.value))
+        } break;
+        case InstructionCode.Compare: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (a.isNumber() && b.isNumber()) {
+                frame.stack.push(Value.fromNumber(a.value - b.value));
+            } else if (a.isString() && b.isString()) {
+                if (a.value === b.value) {
+                    frame.stack.push(Value.fromInteger(0));
+                } else if (a.value > b.value) {
+                    frame.stack.push(Value.fromInteger(1));
+                } else {
+                    frame.stack.push(Value.fromInteger(-1));
+                }
+            } else throw new ValueTypeError("comparison allowed only between numbers or strings");
+        } break;
+        case InstructionCode.Equals: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (a.type !== b.type && !(a.isNumber() && b.isNumber())) {
+                frame.stack.push(Value.fromInteger(0));
+            } else {
+                if (a.isList() || a.isCustom())
+                    throw new Error("Equals for List and Custom not implemented");
+                frame.stack.push(Value.fromInteger(a.value === b.value ? 1 : 0));
+            }
+        } break;
+        case InstructionCode.J:
+            frame.instructionIndex -= 1;
+            frame.instructionIndex += instruction.arg0;
+            break;
+        case InstructionCode.JZ:
+        case InstructionCode.JNZ:
+        case InstructionCode.JGZ:
+        case InstructionCode.JGEZ:
+        case InstructionCode.JLZ:
+        case InstructionCode.JLEZ: {
+            const [value] = popValuesFromStack(frame.stack, instruction.code, 1);
+            if (!value.isNumber())
+                throw new ValueTypeError("can only branch on numbers");
+            if (shouldJump(instruction.code, value.value)) {
+                frame.instructionIndex -= 1;
+                frame.instructionIndex += instruction.arg0;
+            }
+        } break;
+        case InstructionCode.IsEmpty: {
+            const [listOrString] = getValuesFromStack(frame.stack, instruction.code, 1);
+            if (!listOrString.isList() && !listOrString.isString())
+                throw new ValueTypeError("cannot check for emptiness of non-list/string value");
+            frame.stack.push(Value.fromInteger(listOrString.value.length > 0 ? 0 : 1));
+        } break;
+        case InstructionCode.Length: {
+            const [listOrString] = getValuesFromStack(frame.stack, instruction.code, 1);
+            if (!listOrString.isList() && !listOrString.isString())
+                throw new ValueTypeError("cannot take length of non-list/string value");
+            frame.stack.push(Value.fromInteger(listOrString.value.length));
+        } break;
+        case InstructionCode.Prepend: {
+            const [listOrString, head] = getValuesFromStack(frame.stack, instruction.code, 2);
+            frame.stack.pop(); // head
+            if (listOrString.isList()) {
+                listOrString.value.unshift(head)
+            } else if (listOrString.isString()) {
+                if (head.isInteger()) {
+                    const newString = String.fromCodePoint(head.value) + listOrString.value;
+                    listOrString.setString(newString);
+                } else if (head.isString()) {
+                    const newString = head.value + listOrString.value;
+                    listOrString.setString(newString);
+                } else throw new ValueTypeError("cannot prepend to a string a non-integer/string value");
+            } else throw new ValueTypeError("cannot prepend to a non-list/string value");
+        } break;
+        case InstructionCode.Append: {
+            const [listOrString, back] = getValuesFromStack(frame.stack, instruction.code, 2);
+            frame.stack.pop(); // back
+            if (listOrString.isList()) {
+                listOrString.value.push(back)
+            } else if (listOrString.isString()) {
+                if (back.isInteger()) {
+                    const newString = listOrString.value + String.fromCodePoint(back.value);
+                    listOrString.setString(newString);
+                } else if (back.isString()) {
+                    const newString = listOrString.value + back.value;
+                    listOrString.setString(newString);
+                } else throw new ValueTypeError("cannot append to a string a non-integer/string value");
+            } else throw new ValueTypeError("cannot append to a non-list/string value");
+        } break;
+        case InstructionCode.Index: {
+            const [listOrString, index] = getValuesFromStack(frame.stack, instruction.code, 2);
+            frame.stack.pop(); // index
+
+            if (!index.isInteger())
+                throw new ValueTypeError("index must be an integer");
+
+            if (listOrString.isList()) {
+                const list = listOrString.value;
+                if (index.value < 0 || index.value >= list.length)
+                    throw new IndexOutOfBoundsError(`list index ${index.value} out of bounds [0;${list.length})`);
+                frame.stack.push(list[index.value]);
+            } else if (listOrString.isString()) {
+                const str = listOrString.value;
+                if (index.value < 0 || index.value >= str.length)
+                    throw new IndexOutOfBoundsError(`string index ${index.value} out of bounds [0;${str.length})`);
+                // FIXME: does not follow Pulsar's spec (index by byte)
+                frame.stack.push(Value.fromInteger(str.codePointAt(index.value)));
+            } else throw new ValueTypeError("cannot index a non-list/string value");
+        } break;
+        case InstructionCode.Concat: {
+            const [listA, listB] = getValuesFromStack(frame.stack, instruction.code, 2);
+            frame.stack.pop(); // listB
+            listA.value.push(...listB.value);
+        } break;
+        case InstructionCode.Head: {
+            const [list] = getValuesFromStack(frame.stack, instruction.code, 1);
+            if (!list.isList())
+                throw new ValueTypeError("cannot take head of a non-list value");
+            if (list.value.length <= 0)
+                throw new IndexOutOfBoundsError("cannot take head of an empty list");
+            const head = list.value.shift();
+            frame.stack.push(head);
+        } break;
+        case InstructionCode.Tail: {
+            const [list] = getValuesFromStack(frame.stack, instruction.code, 1);
+            if (!list.isList())
+                throw new ValueTypeError("cannot take tail of a non-list value");
+            if (list.value.length <= 0)
+                throw new IndexOutOfBoundsError("cannot take tail of an empty list");
+            list.value.shift();
+        } break;
+        case InstructionCode.Prefix: {
+            const [str, length] = getValuesFromStack(frame.stack, instruction.code, 2);
+            frame.stack.pop(); // length
+
+            if (!str.isString())
+                throw new ValueTypeError("cannot take prefix of a non-string value");
+            if (!length.isInteger())
+                throw new ValueTypeError("prefix length must be an integer");
+
+            if (length.value < 0 || length.value >= str.length)
+                throw new IndexOutOfBoundsError("out of bounds prefix length");
+            const actualStrValue = str.value;
+            str.setString(actualStrValue.slice(length.value));
+            frame.stack.push(Value.fromString(actualStrValue.slice(0, length.value)));
+        } break;
+        default:
+            throw new Error(`instruction ${instruction.code} (${instructionCodeToString(instruction.code)}) not implemented`);
+        }
+    }
+}

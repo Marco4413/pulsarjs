@@ -1,0 +1,38 @@
+@import url('https://marco4413.github.io/static/css/light.css');
+
+#console {
+    min-height: 5em;
+    border: solid var(--background-color-dark) 2.5px;
+
+    padding: 0.5em;
+}
+
+#console > * {
+    margin: 0px;
+    padding: 0px;
+    white-space: pre-wrap;
+}
+
+#input-container {
+    display: flex;
+    margin: 0.5em;
+}
+
+#input-container > * {
+    flex-grow: 1;
+}
+
+#script-label {
+    margin: 2px;
+    background-color: var(--background-color-dark);
+    border-radius: 5px;
+    padding: 3px;
+}
+
+#script-label:hover {
+    background-color: var(--hover-color-light);
+}
+
+#error-report {
+    white-space: pre-wrap;
+}

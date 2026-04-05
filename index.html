@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulsar Playground</title>
+    <link id="style" rel="stylesheet" href="style.css">
+    <script src="script.js" type="module"></script>
+</head>
+<body>
+    <div id="console"></div>
+    <div id="input-container">
+        <input type="text" id="input" placeholder="Input...">
+    </div>
+    <div>
+        <label for="example-picker">Examples&colon;</label>
+        <select id="example-picker">
+            <option value="">---</option>
+            <option value="./examples/hello_world.ntx">Hello World</option>
+            <option value="./examples/printf.ntx">Printf</option>
+            <option value="./examples/tris.ntx">Tris</option>
+        </select>
+        <label for="script-picker" id="script-label">Script: &lt;Browse...&gt;</label>
+        <input style="display: none;" type="file" id="script-picker" accept=".ntx">
+    </div>
+    <pre id="error-report"></pre>
+</body>
+</html>
