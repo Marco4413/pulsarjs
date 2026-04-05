@@ -1,6 +1,6 @@
 import { getCodeSourceDebugData, getFunctionSourceDebugData } from "./pulsar/debug.js";
 import { readNeutronBuffer } from "./pulsar/neutron.js";
-import { ExecutionContext, Module, Value } from "./pulsar/runtime.js";
+import { ExecutionContext, Module, Value, ValueTypeError, valueTypeToString } from "./pulsar/runtime.js";
 
 /** @type {HTMLElement} */
 let $console;
@@ -105,7 +105,10 @@ function bindNatives(module) {
         context.currentStack.push(Value.fromString(await getInput()));
     });
     module.bindNativeByName("stdout/write!", context => {
-        consoleWrite(context.currentFrame.locals[0].value);
+        const s = context.currentFrame.locals[0];
+        if (!s.isString())
+            throw new ValueTypeError(`expected String, got ${valueTypeToString(s.type)}`);
+        consoleWrite(s.value);
     });
     module.bindNativeByName("println!", context => {
         consoleWrite(context.currentFrame.locals[0].value, "\n");
