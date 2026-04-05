@@ -48,30 +48,43 @@ export function createSourcePositionCursor(sourcePosition) {
 }
 
 /**
+ * @typedef {object} SourceViewLine
+ * @property {number} line
+ * @property {string} text
+ */
+
+/**
  * @param {string} source
  * @param {SourcePosition} sourcePosition
- * @returns {string|undefined}
+ * @returns {SourceViewLine[]}
  */
 export function getSourceView(source, sourcePosition) {
-    // FIXME: this is really bad, find a better way to handle this
+    // FIXME: this is really bad (splitting the whole source code), find a better way to handle this
     const lines = source.split(/\r\n|\r|\n/g);
-    if (sourcePosition.line < 0 || sourcePosition.line >= lines.length)
-        return undefined;
-    return lines[sourcePosition.line];
+
+    const view = [];
+    for (let lineOffset = -2; lineOffset <= 0; ++lineOffset) {
+        const lineIndex = sourcePosition.line + lineOffset;
+        if (lineIndex >= 0 && lineIndex < lines.length) {
+            view.push({ line: lineIndex, text: lines[lineIndex] });
+        }
+    }
+    return view;
 }
+
 /**
  * @typedef {object} SourceDebugData
  * @property {string} path
  * @property {string} source
  * @property {SourcePosition} sourcePosition
- * @property {string} [view]
+ * @property {SourceViewLine[]} view
  * @property {string} cursor
  */
 
 /**
  * @param {SourceDebugSymbol} sourceDebugSymbol
  * @param {SourcePosition} sourcePosition
- * @returns {SourceDebugData|undefined}
+ * @returns {SourceDebugData}
  */
 export function getSourceDebugData(sourceDebugSymbol, sourcePosition) {
     /** @type {SourceDebugData} */
