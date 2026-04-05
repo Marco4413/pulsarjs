@@ -53,7 +53,7 @@ export function createSourcePositionCursor(sourcePosition) {
  * @returns {string|undefined}
  */
 export function getSourceView(source, sourcePosition) {
-    // this is really bad, find a better way to handle this
+    // FIXME: this is really bad, find a better way to handle this
     const lines = source.split(/\r\n|\r|\n/g);
     if (sourcePosition.line < 0 || sourcePosition.line >= lines.length)
         return undefined;

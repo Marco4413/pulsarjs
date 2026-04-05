@@ -260,6 +260,7 @@ function readModule(r) {
  * @returns {Module}
  */
 export function readNeutron(r) {
+    // TODO: better errors and format version handling
     const MAGIC   = 0x58544E00; // "\0NTX"
     const VERSION = 0;
 

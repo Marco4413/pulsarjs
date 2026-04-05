@@ -422,6 +422,8 @@ function cloneValueList(list) {
     return cloned;
 }
 
+// TODO: custom types
+
 export class Value {
     /** @type {ValueType} */ #type;
     /** @type {undefined|number|string|Value[]} */ #value;
