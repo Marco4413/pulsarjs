@@ -1,9 +1,12 @@
+import { getFunctionSourceDebugData, getCodeSourceDebugData } from "./debug.js";
+
 /**
  * @import {
  *     FunctionDebugSymbol,
  *     BlockDebugSymbol,
  *     GlobalDebugSymbol,
  *     SourceDebugSymbol,
+ *     SourceDebugData,
  * } from './debug.js';
  */
 
@@ -437,6 +440,50 @@ export class Module {
  * @property {Value[]} stack
  * @property {Value[]} locals
  */
+
+/**
+ * generates a pretty error report using debug information if available
+ * @param {Error} error
+ * @param {Frame} [frame]
+ * @returns {string}
+ */
+export function getErrorReport(error, frame) {
+    /** @param {SourceDebugData} debugData */
+    function getFullViewWithPositionTag(debugData) {
+        const positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} |`;
+        const emptyTag    = "|".padStart(positionTag.length);
+
+        let viewWithTag = "";
+        for (const view of debugData.view) {
+            if (view.line === debugData.sourcePosition.line) {
+                viewWithTag += `${positionTag} ${view.text}\n`;
+                viewWithTag += `${emptyTag} ${debugData.cursor}\n`;
+            } else {
+                viewWithTag += `${emptyTag} ${view.text}\n`;
+            }
+        }
+        return viewWithTag.trimEnd();
+    }
+
+    let report = `${error.constructor.name}: ${error.message}`;
+    if (frame == null) return report;
+
+    report += `\ninside function '${frame.function.name}'`;
+
+    let debugData;
+
+    debugData = getFunctionSourceDebugData(frame.function.debugSymbol);
+    if (debugData != null && debugData.view.length > 0) {
+        report += ` (${debugData.path})\ndefined at:\n${getFullViewWithPositionTag(debugData)}`;
+    }
+
+    debugData = getCodeSourceDebugData(frame.function.codeDebugSymbols, frame.instructionIndex);
+    if (debugData != null && debugData.view.length > 0) {
+        report += `\nduring execution of:\n${getFullViewWithPositionTag(debugData)}`;
+    }
+
+    return report;
+}
 
 function cloneValueList(list) {
     const cloned = new Array(list.length);

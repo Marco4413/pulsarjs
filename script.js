@@ -1,6 +1,13 @@
-import { getCodeSourceDebugData, getFunctionSourceDebugData } from "./pulsar/debug.js";
 import { readNeutronBuffer } from "./pulsar/neutron.js";
-import { ExecutionContext, Module, StopSignal, Value, ValueTypeError, valueTypeToString } from "./pulsar/runtime.js";
+import {
+    ExecutionContext,
+    Module,
+    StopSignal,
+    Value,
+    ValueTypeError,
+    valueTypeToString,
+    getErrorReport,
+} from "./pulsar/runtime.js";
 
 /** @type {HTMLElement} */
 let $console;
@@ -59,43 +66,6 @@ async function getInput(stopSignal) {
         await new Promise(res => requestAnimationFrame(res));
     }
     return inputBuffer.shift();
-}
-
-function getErrorReport(error, frame) {
-    function getFullViewWithPositionTag(debugData) {
-        const positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} |`;
-        const emptyTag    = "|".padStart(positionTag.length);
-
-        let viewWithTag = "";
-        for (const view of debugData.view) {
-            if (view.line === debugData.sourcePosition.line) {
-                viewWithTag += `${positionTag} ${view.text}\n`;
-                viewWithTag += `${emptyTag} ${debugData.cursor}\n`;
-            } else {
-                viewWithTag += `${emptyTag} ${view.text}\n`;
-            }
-        }
-        return viewWithTag.trimEnd();
-    }
-
-    let report = `${error.constructor.name}: ${error.message}`;
-    if (frame == null) return report;
-
-    report += `\ninside function '${frame.function.name}'`;
-
-    let debugData;
-
-    debugData = getFunctionSourceDebugData(frame.function.debugSymbol);
-    if (debugData != null && debugData.view.length > 0) {
-        report += ` (${debugData.path})\ndefined at:\n${getFullViewWithPositionTag(debugData)}`;
-    }
-
-    debugData = getCodeSourceDebugData(frame.function.codeDebugSymbols, frame.instructionIndex);
-    if (debugData != null && debugData.view.length > 0) {
-        report += `\nduring execution of:\n${getFullViewWithPositionTag(debugData)}`;
-    }
-
-    return report;
 }
 
 /** @type {HTMLPreElement} */
