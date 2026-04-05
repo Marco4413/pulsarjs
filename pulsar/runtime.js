@@ -1,3 +1,12 @@
+/**
+ * @import {
+ *     FunctionDebugSymbol,
+ *     BlockDebugSymbol,
+ *     GlobalDebugSymbol,
+ *     SourceDebugSymbol,
+ * } from './debug.js';
+ */
+
 /** @enum {number} */
 export const ValueType = Object.freeze({
     Void:                    0x00,
@@ -212,7 +221,8 @@ export function instructionCodeToString(instructionCode) {
  * @property {number} stackArity
  * @property {number} localsCount
  * @property {Instruction[]} [code] if undefined, same as empty array
- * TODO: Debug symbols
+ * @property {FunctionDebugSymbol} [debugSymbol]
+ * @property {BlockDebugSymbol[]} [codeDebugSymbols]
  */
 
 /**
@@ -224,7 +234,7 @@ export function instructionCodeToString(instructionCode) {
  * @property {string} name
  * @property {Value} initialValue
  * @property {boolean} isConstant
- * TODO: Debug symbols
+ * @property {GlobalDebugSymbol} debugSymbol
  */
 
 /**
@@ -232,7 +242,7 @@ export function instructionCodeToString(instructionCode) {
  * @property {string} name
  * @property {Value} value
  * @property {boolean} isConstant
- * TODO: Debug symbols
+ * @property {GlobalDebugSymbol} debugSymbol
  */
 
 export class IndexOutOfBoundsError extends Error{}
@@ -247,6 +257,7 @@ export class Module {
     /** @type {(NativeFunction|null)[]} */ #nativeFunctions;
     /** @type {GlobalDefinition[]}      */ #globals;
     /** @type {Value[]}                 */ #constants;
+    /** @type {SourceDebugSymbol[]}     */ #sourceDebugSymbols;
 
     constructor() {
         this.#functions       = [];
@@ -254,6 +265,7 @@ export class Module {
         this.#nativeFunctions = [];
         this.#globals         = [];
         this.#constants       = [];
+        this.#sourceDebugSymbols = [];
     }
 
     /** @param  {...FunctionDefinition} functionDefinitions */
@@ -277,6 +289,11 @@ export class Module {
     /** @param  {...Value} values */
     addConstants(...values) {
         this.#constants.push(...values);
+    }
+
+    /** @param  {...SourceDebugSymbol} sourceDebugSymbols */
+    addSourceDebugSymbols(...sourceDebugSymbols) {
+        this.#sourceDebugSymbols.push(...sourceDebugSymbols);
     }
 
     /**
@@ -320,6 +337,7 @@ export class Module {
             name: definition.name,
             value: definition.initialValue.clone(),
             isConstant: definition.isConstant,
+            debugSymbol: definition.debugSymbol,
         }));
     }
 
@@ -348,6 +366,43 @@ export class Module {
             }
         }
         return false;
+    }
+
+    /**
+     * @param {number} index
+     * @returns {SourceDebugSymbol|undefined}
+     */
+    getSourceDebugSymbolByIndex(index) {
+        if (index < 0 && index >= this.#sourceDebugSymbols.length)
+            return undefined;
+        return this.#sourceDebugSymbols[index];
+    }
+
+    resolveDebugSymbols() {
+        if (this.#sourceDebugSymbols.length <= 0) return;
+        for (const fn of this.#functions)      this.#resolveFunctionDebugSymbols(fn);
+        for (const fn of this.#nativeBindings) this.#resolveFunctionDebugSymbols(fn);
+        for (const global of this.#globals)    this.#resolveGlobalDebugSymbols(global);
+    }
+
+    /** @param {FunctionDefinition} fn */
+    #resolveFunctionDebugSymbols(fn) {
+        if (fn.debugSymbol != null) {
+            const resolvedSource = this.getSourceDebugSymbolByIndex(fn.debugSymbol.sourceIndex);
+            fn.debugSymbol.resolvedSource = resolvedSource;
+            if (fn.codeDebugSymbols != null) {
+                for (const blockDebugSymbol of fn.codeDebugSymbols) {
+                    blockDebugSymbol.resolvedSource = resolvedSource;
+                }
+            }
+        }
+    }
+
+    /** @param {GlobalDefinition} global */
+    #resolveGlobalDebugSymbols(global) {
+        if (global.debugSymbol != null) {
+            global.debugSymbol.resolvedSource = this.getSourceDebugSymbolByIndex(global.debugSymbol.sourceIndex);
+        }
     }
 }
 

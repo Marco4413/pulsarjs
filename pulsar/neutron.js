@@ -15,6 +15,17 @@ import {
  * } from './runtime.js';
  */
 
+/**
+ * @import {
+ *     SourcePosition,
+ *     Token,
+ *     FunctionDebugSymbol,
+ *     BlockDebugSymbol,
+ *     GlobalDebugSymbol,
+ *     SourceDebugSymbol,
+ * } from './debug.js';
+ */
+
 const ChunkType = Object.freeze({
     EndOfModule:        0x00,
     Functions:          0x01,
@@ -38,6 +49,68 @@ const ChunkType = Object.freeze({
 
 function isOptionalChunkType(chunkType) {
     return chunkType >= 0x80;
+}
+
+/**
+ * @param {Reader} r
+ * @returns {SourcePosition}
+ */
+function readSourcePosition(r) {
+    const line     = r.readU64();
+    const char     = r.readU64();
+    const index    = r.readU64();
+    const charSpan = r.readU64();
+    return {line, char, index, charSpan};
+}
+
+/**
+ * @param {Reader} r
+ * @returns {Token}
+ */
+function readToken(r) {
+    const tokenType      = r.readU16();
+    const sourcePosition = readSourcePosition(r);
+    return {tokenType, sourcePosition};
+}
+
+/**
+ * @param {Reader} r
+ * @returns {FunctionDebugSymbol}
+ */
+function readFunctionDebugSymbol(r) {
+    const token       = readToken(r);
+    const sourceIndex = r.readU64();
+    return {token, sourceIndex};
+}
+
+/**
+ * @param {Reader} r
+ * @returns {BlockDebugSymbol}
+ */
+function readBlockDebugSymbol(r) {
+    const token      = readToken(r);
+    const startIndex = r.readU64();
+    return {token, startIndex};
+}
+
+/**
+ * @param {Reader} r
+ * @returns {GlobalDebugSymbol}
+ */
+function readGlobalDebugSymbol(r) {
+    const token       = readToken(r);
+    const sourceIndex = r.readU64();
+    return {token, sourceIndex};
+}
+
+/**
+ * @param {Reader} r
+ * @returns {SourceDebugSymbol}
+ */
+function readSourceDebugSymbol(r) {
+    const path   = r.readString();
+    const source = r.readString();
+    return {path, source};
 }
 
 /**
@@ -74,8 +147,13 @@ function readFunctionDefinition(r) {
     const stackArity  = r.readU64();
     const localsCount = r.readU64();
     const code = r.readSized(readCode);
-    /* TODO: debug */ r.readSized(() => {});
-    return {name, arity, returns, stackArity, localsCount, code};
+    const [debugSymbol, codeDebugSymbols] = r.readSized(r => {
+        if (r.remainingBytes <= 0) return [undefined, undefined];
+        const debugSymbol      = readFunctionDebugSymbol(r);
+        const codeDebugSymbols = r.readList(readBlockDebugSymbol);
+        return [debugSymbol, codeDebugSymbols];
+    });
+    return {name, arity, returns, stackArity, localsCount, code, debugSymbol, codeDebugSymbols};
 }
 
 /**
@@ -89,8 +167,13 @@ function readNativeBinding(r) {
     const stackArity  = r.readU64();
     const localsCount = r.readU64();
     /* code: ignored because of binding */ r.readSized(() => {});
-    /* TODO: debug */ r.readSized(() => {});
-    return {name, arity, returns, stackArity, localsCount};
+    const [debugSymbol, /* ignore code debug symbols */ _] = r.readSized(r => {
+        if (r.remainingBytes <= 0) return [undefined, undefined];
+        const debugSymbol      = readFunctionDebugSymbol(r);
+        const codeDebugSymbols = r.readList(readBlockDebugSymbol);
+        return [debugSymbol, codeDebugSymbols];
+    });
+    return {name, arity, returns, stackArity, localsCount, debugSymbol};
 }
 
 /**
@@ -127,10 +210,15 @@ function readGlobalDefinition(r) {
     const name         = r.readString();
     const flags        = r.readU8();
     const initialValue = readValue(r);
-    /* TODO: debug */ r.readSized(() => {});
+    const debugSymbol  = r.readSized(r => {
+        if (r.remainingBytes <= 0) return undefined;
+        const debugSymbol = readGlobalDebugSymbol(r);
+        return debugSymbol;
+    });
     return {
         name, initialValue,
         isConstant: (flags & GlobalFlag.IsConstant) !== 0,
+        debugSymbol,
     };
 }
 
@@ -152,7 +240,7 @@ function readModule(r) {
             case ChunkType.NativeBindings: module.addNativeBindings (...r.readList(readNativeBinding));      break;
             case ChunkType.Globals:        module.addGlobals        (...r.readList(readGlobalDefinition));   break;
             case ChunkType.Constants:      module.addConstants      (...r.readList(readValue));              break;
-            case ChunkType.SourceDebugSymbols:
+            case ChunkType.SourceDebugSymbols: module.addSourceDebugSymbols(...r.readList(readSourceDebugSymbol)); break;
             default:
                 if (isOptionalChunkType(chunkType)) {
                     console.warn(`ignored optional chunk type ${chunkType}`);
@@ -163,6 +251,7 @@ function readModule(r) {
         });
     }
 
+    module.resolveDebugSymbols();
     return module;
 }
 
