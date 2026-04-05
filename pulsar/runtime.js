@@ -225,6 +225,30 @@ export function instructionCodeToString(instructionCode) {
  * @property {BlockDebugSymbol[]} [codeDebugSymbols]
  */
 
+export class StopSignalError extends Error{}
+export class StopSignal {
+    #isStopping;
+    #completePromise;
+    #complete;
+
+    constructor() {
+        this.#isStopping = false;
+        this.#completePromise = new Promise(resolve => {
+            this.#complete = resolve;
+        });
+    }
+
+    get isStopping() { return this.#isStopping; }
+
+    stop()     { this.#isStopping = true; return this.#completePromise; }
+    raise()    { throw new StopSignalError("stop requested"); }
+    complete() { this.#complete(); }
+
+    handleRequest() {
+        if (this.#isStopping) throw new StopSignalError("stop requested");
+    }
+}
+
 /**
  * @typedef {(context: ExecutionContext) => Promise<void>|void} NativeFunction
  */
@@ -592,19 +616,24 @@ export class ExecutionContext {
     #stack;
     /** @type {Frame[]} */
     #callStack;
+    /** @type {StopSignal|undefined} if undefined, context is not running */
+    #stopSignal;
 
     /**
      * @param {Module} module
      */
     constructor(module) {
-        this.#module    = module;
-        this.#globals   = module.createGlobals();
-        this.#stack     = [];
-        this.#callStack = [];
+        this.#module     = module;
+        this.#globals    = module.createGlobals();
+        this.#stack      = [];
+        this.#callStack  = [];
+        this.#stopSignal = undefined;
     }
 
     get module() { return this.#module; }
     get stack()  { return this.#stack;  }
+
+    get stopSignal() { return this.#stopSignal; }
 
     get currentStack() { return this.#callStack.length > 0 ? this.currentFrame.stack : this.#stack; }
     get currentFrame() { return this.#callStack[this.#callStack.length-1]; }
@@ -667,10 +696,86 @@ export class ExecutionContext {
     /**
      * async to support async native functions
      * @throws any runtime error
+     * @param {StopSignal} stopSignal
      */
-    async step() {
+    async step(stopSignal) {
         if (this.isDone) return;
+        if (this.#stopSignal != null) return;
+        this.#setStopSignal(stopSignal);
 
+        try {
+            this.#step();
+        } finally {
+            this.#clearStopSignal();
+        }
+    }
+
+    /**
+     * @throws any runtime error
+     * @param {StopSignal} [stopSignal]
+     */
+    async run(stopSignal) {
+        if (this.#stopSignal != null) return;
+        this.#setStopSignal(stopSignal);
+
+        try {
+            while (!this.isDone) {
+                await this.#step();
+                this.#stopSignal.handleRequest();
+            }
+        } finally {
+            this.#clearStopSignal();
+        }
+    }
+
+    /**
+     * runs the context asynchronously so that the browser may tick during execution
+     * @throws any runtime error
+     * @param {StopSignal} [stopSignal]
+     * @param {number} [stepsPerFrame] steps to take before giving control back to the browser. must be > 0
+     */
+    async runAsync(stopSignal, stepsPerFrame=2048) {
+        if (stepsPerFrame <= 0)
+            throw new RangeError(`stepsPerFrame must be > 0, got ${stepsPerFrame}`);
+
+        if (this.#stopSignal != null) return;
+        this.#setStopSignal(stopSignal);
+
+        try {
+            let frameStep = 0;
+            while (!this.isDone) {
+                await this.#step();
+                this.#stopSignal.handleRequest();
+
+                ++frameStep;
+                if (frameStep >= stepsPerFrame) {
+                    await new Promise(res => setTimeout(res));
+                    frameStep = 0;
+                }
+            }
+        } finally {
+            this.#clearStopSignal();
+        }
+    }
+
+    /** @param {StopSignal} [stopSignal] */
+    #setStopSignal(stopSignal) {
+        this.#stopSignal = this.#stopSignal ?? stopSignal ?? new StopSignal();
+        return this.#stopSignal;
+    }
+
+    #clearStopSignal() {
+        if (this.#stopSignal != null) {
+            this.#stopSignal.complete();
+            this.#stopSignal = undefined;
+        }
+    }
+
+    /**
+     * async to support async native functions
+     * @throws any runtime error
+     */
+    async #step() {
         const calleeFrame = this.currentFrame;
         if (calleeFrame.function.code != null && calleeFrame.instructionIndex < calleeFrame.function.code.length) {
             await this.#executeInstruction(calleeFrame);
@@ -685,33 +790,6 @@ export class ExecutionContext {
         const callerStack = this.currentStack;
         for (let i = 0; i < calleeFrame.function.returns; ++i) {
             callerStack.push(calleeFrame.stack[calleeStackBase+i]);
-        }
-    }
-
-    /** @throws any runtime error */
-    async run() {
-        while (!this.isDone) {
-            await this.step();
-        }
-    }
-
-    /**
-     * runs the context asynchronously so that the browser may tick during execution
-     * @throws any runtime error
-     * @param {number} [stepsPerFrame] steps to take before giving control back to the browser. must be > 0
-     */
-    async runAsync(stepsPerFrame=2048) {
-        if (stepsPerFrame <= 0)
-            throw new RangeError(`stepsPerFrame must be > 0, got ${stepsPerFrame}`);
-        let frameStep = 0;
-        while (!this.isDone) {
-            await this.step();
-            ++frameStep;
-
-            if (frameStep >= stepsPerFrame) {
-                await new Promise(res => setTimeout(res));
-                frameStep = 0;
-            }
         }
     }
 

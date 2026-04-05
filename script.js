@@ -1,6 +1,6 @@
 import { getCodeSourceDebugData, getFunctionSourceDebugData } from "./pulsar/debug.js";
 import { readNeutronBuffer } from "./pulsar/neutron.js";
-import { ExecutionContext, Module, Value, ValueTypeError, valueTypeToString } from "./pulsar/runtime.js";
+import { ExecutionContext, Module, StopSignal, Value, ValueTypeError, valueTypeToString } from "./pulsar/runtime.js";
 
 /** @type {HTMLElement} */
 let $console;
@@ -53,8 +53,9 @@ function clearInput() {
     inputBuffer = [];
 }
 
-async function getInput() {
+async function getInput(stopSignal) {
     while (inputBuffer.length <= 0) {
+        if (stopSignal != null) stopSignal.handleRequest();
         await new Promise(res => requestAnimationFrame(res));
     }
     return inputBuffer.shift();
@@ -113,7 +114,7 @@ function clearError() {
 /** @param {Module} module */
 function bindNatives(module) {
     module.bindNativeByName("stdin/read", async context => {
-        context.currentStack.push(Value.fromString(await getInput()));
+        context.currentStack.push(Value.fromString(await getInput(context.stopSignal)));
     });
     module.bindNativeByName("stdout/write!", context => {
         const s = context.currentFrame.locals[0];
@@ -126,20 +127,18 @@ function bindNatives(module) {
     });
 }
 
-// HACK: allow for proper script termination
-let isScriptRunning = false;
+let lastStopSignal;
 
 /**
  * @param {string} fileName
  * @param {ArrayBufferLike} buffer
  */
 async function runScript(fileName, buffer) {
-    if (isScriptRunning) {
-        window.alert("A script is already running. Currently a script cannot be forcefully stopped. Please complete any previously running script before trying to run a new one.");
-        return;
-    }
+    const thisStopSignal = new StopSignal();
+    if (lastStopSignal != null)
+        await lastStopSignal.stop();
+    lastStopSignal = thisStopSignal;
 
-    isScriptRunning = true;
     clearError();
     clearInput();
     consoleClear();
@@ -153,14 +152,14 @@ async function runScript(fileName, buffer) {
         context.callFunctionByName("main");
 
         try {
-            await context.runAsync();
+            await context.runAsync(thisStopSignal);
         } catch (error) {
-            reportError(error, context);
+            if (!thisStopSignal.isStopping) {
+                reportError(error, context);
+            }
         }
     } catch (error) {
         reportError(error, undefined);
-    } finally {
-        isScriptRunning = false;
     }
 }
 
