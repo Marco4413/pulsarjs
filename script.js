@@ -1,3 +1,4 @@
+import { getCodeSourceDebugData, getFunctionSourceDebugData } from "./pulsar/debug.js";
 import { readNeutronBuffer } from "./pulsar/neutron.js";
 import { ExecutionContext, Module, Value } from "./pulsar/runtime.js";
 
@@ -59,11 +60,39 @@ async function getInput() {
     return inputBuffer.shift();
 }
 
+function getErrorReport(error, frame) {
+    function getFullViewWithPositionTag(debugData) {
+        const positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} |`;
+        return `${positionTag} ${debugData.view}\n${"|".padStart(positionTag.length)} ${debugData.cursor}`;
+    }
+
+    let report = `${error.constructor.name}: ${error.message}`;
+    if (frame == null) return report;
+
+    report += `\ninside function '${frame.function.name}'`;
+
+    let debugData;
+
+    debugData = getFunctionSourceDebugData(frame.function.debugSymbol);
+    if (debugData != null && debugData.view != null) {
+        report += ` (${debugData.path})\ndefined at:\n${getFullViewWithPositionTag(debugData)}`;
+    }
+
+    debugData = getCodeSourceDebugData(frame.function.codeDebugSymbols, frame.instructionIndex);
+    if (debugData != null && debugData.view != null) {
+        report += `\nduring execution of:\n${getFullViewWithPositionTag(debugData)}`;
+    }
+
+    return report;
+}
+
 /** @type {HTMLPreElement} */
 let $errorReport;
-function reportError(error) {
+function reportError(error, context) {
     console.error(error);
-    $errorReport.innerText = `${error.constructor.name}: ${error.message}`;
+    $errorReport.innerText = context == null || context.isDone
+        ? getErrorReport(error, undefined)
+        : getErrorReport(error, context.currentFrame);
 }
 
 function clearError() {
@@ -100,9 +129,13 @@ async function runScript(fileName, buffer) {
         context.stack.push(Value.fromList([ Value.fromString(fileName) ]));
         context.callFunctionByName("main");
 
-        await context.runAsync();
+        try {
+            await context.runAsync();
+        } catch (error) {
+            reportError(error, context);
+        }
     } catch (error) {
-        reportError(error);
+        reportError(error, undefined);
     }
 }
 
