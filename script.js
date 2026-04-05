@@ -112,11 +112,20 @@ function bindNatives(module) {
     });
 }
 
+// HACK: allow for proper script termination
+let isScriptRunning = false;
+
 /**
  * @param {string} fileName
  * @param {ArrayBufferLike} buffer
  */
 async function runScript(fileName, buffer) {
+    if (isScriptRunning) {
+        window.alert("A script is already running. Currently a script cannot be forcefully stopped. Please complete any previously running script before trying to run a new one.");
+        return;
+    }
+
+    isScriptRunning = true;
     clearError();
     clearInput();
     consoleClear();
@@ -136,6 +145,8 @@ async function runScript(fileName, buffer) {
         }
     } catch (error) {
         reportError(error, undefined);
+    } finally {
+        isScriptRunning = false;
     }
 }
 
