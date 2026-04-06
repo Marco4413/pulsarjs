@@ -78,9 +78,14 @@ async function getInput(stopSignal) {
 let $errorReport;
 function reportError(error, context) {
     console.error(error);
-    $errorReport.innerText = context == null || context.isDone
-        ? getErrorReport(error, undefined)
-        : getErrorReport(error, context.currentFrame);
+    if (context == null || context.isDone) {
+        $errorReport.innerText = getErrorReport(error, undefined);
+    } else {
+        let report = getErrorReport(error, context.currentFrame);
+        report += "\ncall stack:\n";
+        report += context.getCallStackReport(5);
+        $errorReport.innerText = report;
+    }
 }
 
 function clearError() {
