@@ -155,28 +155,46 @@ window.addEventListener("load", async () => {
 
     /** @type {HTMLSelectElement} */
     const $examplePicker = document.getElementById("example-picker");
-    $examplePicker.addEventListener("change", async ev => {
-        const filePath  = ev.target.value;
-        if (filePath.length <= 0) return;
-        const file      = await fetch(filePath);
-        const fileBytes = await file.bytes();
-        await runScript(filePath, fileBytes.buffer);
-    });
 
     /** @type {HTMLLabelElement} */
     const $scriptLabel = document.getElementById("script-label");
     const NO_SCRIPT_TEXT = $scriptLabel.innerText;
     /** @type {HTMLInputElement} */
     const $scriptPicker = document.getElementById("script-picker");
-    $scriptPicker.addEventListener("input", async () => {
+
+    const clearExamplePicker = () => {
+        $examplePicker.value = "";
+    };
+
+    const runFromExamplePicker = async () => {
+        const filePath  = $examplePicker.value;
+        if (filePath.length <= 0) return;
+        const file      = await fetch(filePath);
+        const fileBytes = await file.bytes();
+        clearScriptPicker();
+        await runScript(filePath, fileBytes.buffer);
+    };
+
+    const clearScriptPicker = () => {
+        $scriptLabel.innerText = NO_SCRIPT_TEXT;
+        $scriptPicker.value = "";
+    };
+
+    const runFromScriptPicker = async () => {
         if ($scriptPicker.files.length <= 0) {
-            $scriptLabel.innerText = NO_SCRIPT_TEXT;
+            clearScriptPicker();
             return;
         }
 
         const scriptFile  = $scriptPicker.files[0];
         const scriptBytes = await scriptFile.bytes();
         $scriptLabel.innerText = `Script: '${scriptFile.name}'`;
+        clearExamplePicker();
         await runScript(scriptFile.name, scriptBytes.buffer);
-    });
+    };
+
+    clearExamplePicker();
+    clearScriptPicker();
+    $examplePicker.addEventListener("change", () => runFromExamplePicker());
+    $scriptPicker.addEventListener("input", () => runFromScriptPicker());
 });
