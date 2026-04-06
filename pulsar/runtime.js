@@ -745,6 +745,45 @@ export class ExecutionContext {
     }
 
     /**
+     * @param {number} [callsToReport]
+     * @param {string} [tracePrefix]
+     * @returns {string}
+     */
+    getCallStackReport(callsToReport, tracePrefix="  ") {
+        /** @param {Frame} frame */
+        function getCallTrace(frame, prefix) {
+            const callTag = frame.function.code == null ? "*" : "";
+            let trace = `${prefix}(${callTag}${frame.function.name})`;
+            const debugSymbol = frame.function.debugSymbol;
+            if (debugSymbol != null && debugSymbol.resolvedSource != null) {
+                trace += ` '${debugSymbol.resolvedSource.path}:${debugSymbol.token.sourcePosition.line+1}:${debugSymbol.token.sourcePosition.char+1}'`;
+            }
+            return trace;
+        }
+
+        const callStack = this.#callStack;
+        callsToReport = Math.min(callStack.length, Math.max(0, callsToReport ?? callStack.length));
+
+        const lowCallsCount  = Math.floor(callsToReport / 2);
+        const highCallsCount = callsToReport - lowCallsCount;
+        const midCallsCount  = callStack.length - callsToReport;
+
+        let report = "";
+        for (let i = callStack.length-1; i >= callStack.length-highCallsCount; --i) {
+            const frame = callStack[i];
+            report += `${getCallTrace(frame, tracePrefix)}\n`;
+        }
+        if (midCallsCount > 0) {
+            report += `${tracePrefix}... other ${midCallsCount} calls\n`;
+        }
+        for (let i = lowCallsCount-1; i >= 0; --i) {
+            const frame = callStack[i];
+            report += `${getCallTrace(frame, tracePrefix)}\n`;
+        }
+        return report.trimEnd();
+    }
+
+    /**
      * async to support async native functions
      * @throws any runtime error
      * @param {StopSignal} stopSignal
