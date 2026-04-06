@@ -136,6 +136,27 @@ export function shouldJump(instructionCode, value) {
 
 /**
  * @param {InstructionCode} instructionCode
+ * @param {Value} value
+ * @returns {boolean}
+ */
+export function typeCheckValue(instructionCode, value) {
+    switch (instructionCode) {
+    case InstructionCode.IsVoid:                    return value.isVoid();
+    case InstructionCode.IsInteger:                 return value.isInteger();
+    case InstructionCode.IsDouble:                  return value.isDouble();
+    case InstructionCode.IsFunctionReference:       return value.isFunctionReference();
+    case InstructionCode.IsNativeFunctionReference: return value.isNativeFunctionReference();
+    case InstructionCode.IsList:                    return value.isList();
+    case InstructionCode.IsString:                  return value.isString();
+    case InstructionCode.IsCustom:                  return value.isCustom();
+    case InstructionCode.IsNumber:                  return value.isNumber();
+    case InstructionCode.IsAnyFunctionReference:    return value.isFunctionReference() || value.isNativeFunctionReference();
+    }
+    return false;
+}
+
+/**
+ * @param {InstructionCode} instructionCode
  * @returns {string}
  */
 export function instructionCodeToString(instructionCode) {
@@ -593,6 +614,7 @@ export class Value {
         throw new Error("setCustom not implemented");
     }
 
+    isVoid()                    { return this.#type === ValueType.Void;                    }
     isInteger()                 { return this.#type === ValueType.Integer;                 }
     isDouble()                  { return this.#type === ValueType.Double;                  }
     isNumber()                  { return this.isInteger() || this.isDouble();              }
@@ -1209,6 +1231,19 @@ export class ExecutionContext {
             const actualStrValue = str.value;
             str.setString(actualStrValue.slice(nLength));
             frame.stack.push(Value.fromString(actualStrValue.slice(0, nLength)));
+        } break;
+        case InstructionCode.IsVoid:
+        case InstructionCode.IsInteger:
+        case InstructionCode.IsDouble:
+        case InstructionCode.IsFunctionReference:
+        case InstructionCode.IsNativeFunctionReference:
+        case InstructionCode.IsList:
+        case InstructionCode.IsString:
+        case InstructionCode.IsCustom:
+        case InstructionCode.IsNumber:
+        case InstructionCode.IsAnyFunctionReference: {
+            const [value] = getValuesFromStack(frame.stack, instruction.code, 1);
+            frame.stack.push(Value.fromInteger(typeCheckValue(instruction.code, value) ? 1 : 0));
         } break;
         default:
             throw new Error(`instruction ${instruction.code} (${instructionCodeToString(instruction.code)}) not implemented`);
