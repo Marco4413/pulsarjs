@@ -118,18 +118,18 @@ export const InstructionCode = Object.freeze({
 
 /**
  * @param {InstructionCode} instructionCode
- * @param {number} value
+ * @param {bigint|number} value
  * @returns {boolean}
  */
 export function shouldJump(instructionCode, value) {
     switch (instructionCode) {
     case InstructionCode.J:    return true;
-    case InstructionCode.JZ:   return value === 0;
-    case InstructionCode.JNZ:  return value !== 0;
-    case InstructionCode.JGZ:  return value >   0;
-    case InstructionCode.JGEZ: return value >=  0;
-    case InstructionCode.JLZ:  return value <   0;
-    case InstructionCode.JLEZ: return value <=  0;
+    case InstructionCode.JZ:   return value == 0;
+    case InstructionCode.JNZ:  return value != 0;
+    case InstructionCode.JGZ:  return value >  0;
+    case InstructionCode.JGEZ: return value >= 0;
+    case InstructionCode.JLZ:  return value <  0;
+    case InstructionCode.JLEZ: return value <= 0;
     }
     return false;
 }
@@ -213,7 +213,7 @@ export function instructionCodeToString(instructionCode) {
 /**
  * @typedef {object} Instruction
  * @property {InstructionCode} code
- * @property {number} arg0
+ * @property {bigint|number} arg0
  */
 
 /**
@@ -529,11 +529,15 @@ export class Value {
         return this;
     }
 
-    /** @throws {ValueTypeError} @param {number} value */
+    /** @throws {ValueTypeError} @param {bigint|number} value */
     setInteger(value) {
-        if (!Number.isInteger(value))
-            throw new ValueTypeError(`${value} is not an integer`);
+        if (Number.isInteger(value)) {
+            value = BigInt(value);
+        } else if (typeof value !== "bigint")
+            throw new ValueTypeError(`${value} is not a bigint or integer`);
         this.#type  = ValueType.Integer;
+        // TODO: clamp to 64 bits if bugs are found
+        // BigInt.asIntN(64, value);
         this.#value = value;
         return this;
     }
@@ -545,9 +549,9 @@ export class Value {
         return this;
     }
 
-    /** @param {number} value */
+    /** @param {bigint|number} value */
     setNumber(value) {
-        return Number.isInteger(value)
+        return Number.isInteger(value) || typeof value === "bigint"
             ? this.setInteger(value)
             : this.setDouble(value);
     }
@@ -598,11 +602,11 @@ export class Value {
     isString()                  { return this.#type === ValueType.String;                  }
     isCustom()                  { return this.#type === ValueType.Custom;                  }
 
-    /** @throws {ValueTypeError} @param {number} value */
+    /** @throws {ValueTypeError} @param {bigint|number} value */
     static fromInteger(value)                 { return new Value().setInteger(value);                 }
     /** @param {number} value */
     static fromDouble(value)                  { return new Value().setDouble(value);                  }
-    /** @param {number} value */
+    /** @param {bigint|number} value */
     static fromNumber(value)                  { return new Value().setNumber(value);                  }
     /** @throws {ValueTypeError} @param {number} value */
     static fromFunctionReference(value)       { return new Value().setFunctionReference(value);       }
@@ -951,7 +955,7 @@ export class ExecutionContext {
             if (a.isInteger() && b.isInteger()) {
                 frame.stack.push(Value.fromInteger(a.value + b.value));
             } else {
-                frame.stack.push(Value.fromDouble(a.value + b.value));
+                frame.stack.push(Value.fromDouble(Number(a.value) + Number(b.value)));
             }
         } break;
         case InstructionCode.DynSub: {
@@ -961,7 +965,7 @@ export class ExecutionContext {
             if (a.isInteger() && b.isInteger()) {
                 frame.stack.push(Value.fromInteger(a.value - b.value));
             } else {
-                frame.stack.push(Value.fromDouble(a.value - b.value));
+                frame.stack.push(Value.fromDouble(Number(a.value) - Number(b.value)));
             }
         } break;
         case InstructionCode.DynMul: {
@@ -971,7 +975,7 @@ export class ExecutionContext {
             if (a.isInteger() && b.isInteger()) {
                 frame.stack.push(Value.fromInteger(a.value * b.value));
             } else {
-                frame.stack.push(Value.fromDouble(a.value * b.value));
+                frame.stack.push(Value.fromDouble(Number(a.value) * Number(b.value)));
             }
         } break;
         case InstructionCode.DynDiv: {
@@ -979,10 +983,10 @@ export class ExecutionContext {
             if (!a.isNumber() || !b.isNumber())
                 throw new ValueTypeError("cannot perform division between non-numeric values");
             if (a.isInteger() && b.isInteger()) {
-                // Integer division
-                frame.stack.push(Value.fromInteger(Math.floor(a.value / b.value)));
+                // both a and b are bigints
+                frame.stack.push(Value.fromInteger(a.value / b.value));
             } else {
-                frame.stack.push(Value.fromDouble(a.value / b.value));
+                frame.stack.push(Value.fromDouble(Number(a.value) / Number(b.value)));
             }
         } break;
         case InstructionCode.Mod: {
@@ -993,12 +997,18 @@ export class ExecutionContext {
         } break;
         case InstructionCode.Floor: {
             const [value] = getValuesFromStack(frame.stack, instruction.code, 1);
-            value.setInteger(Math.floor(value.value))
+            if (value.isInteger()) {
+                // do nothing, already integer
+            } else if (value.isDouble()) {
+                value.setInteger(Math.floor(value.value));
+            } else throw new ValueType("cannot floor a non-numeric value");
         } break;
         case InstructionCode.Compare: {
             const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
-            if (a.isNumber() && b.isNumber()) {
-                frame.stack.push(Value.fromNumber(a.value - b.value));
+            if (a.isInteger() && b.isInteger()) {
+                frame.stack.push(Value.fromInteger(a.value - b.value));
+            } else if (a.isNumber() && b.isNumber()) {
+                frame.stack.push(Value.fromDouble(Number(a.value) - Number(b.value)));
             } else if (a.isString() && b.isString()) {
                 if (a.value === b.value) {
                     frame.stack.push(Value.fromInteger(0));
@@ -1016,7 +1026,9 @@ export class ExecutionContext {
             } else {
                 if (a.isList() || a.isCustom())
                     throw new Error("Equals for List and Custom not implemented");
-                frame.stack.push(Value.fromInteger(a.value === b.value ? 1 : 0));
+                // using == because we're sure that types are the same.
+                // equality may happen between number and bigint so === won't work
+                frame.stack.push(Value.fromInteger(a.value == b.value ? 1 : 0));
             }
         } break;
         case InstructionCode.J:
@@ -1056,7 +1068,8 @@ export class ExecutionContext {
                 listOrString.value.unshift(head)
             } else if (listOrString.isString()) {
                 if (head.isInteger()) {
-                    const newString = String.fromCodePoint(head.value) + listOrString.value;
+                    const nHead = Number(head.value);
+                    const newString = String.fromCodePoint(nHead) + listOrString.value;
                     listOrString.setString(newString);
                 } else if (head.isString()) {
                     const newString = head.value + listOrString.value;
@@ -1071,7 +1084,8 @@ export class ExecutionContext {
                 listOrString.value.push(back)
             } else if (listOrString.isString()) {
                 if (back.isInteger()) {
-                    const newString = listOrString.value + String.fromCodePoint(back.value);
+                    const nBack = Number(back.value);
+                    const newString = listOrString.value + String.fromCodePoint(nBack);
                     listOrString.setString(newString);
                 } else if (back.isString()) {
                     const newString = listOrString.value + back.value;
@@ -1086,17 +1100,18 @@ export class ExecutionContext {
             if (!index.isInteger())
                 throw new ValueTypeError("index must be an integer");
 
+            const nIndex = Number(index.value);
             if (listOrString.isList()) {
                 const list = listOrString.value;
-                if (index.value < 0 || index.value >= list.length)
-                    throw new IndexOutOfBoundsError(`list index ${index.value} out of bounds [0;${list.length})`);
-                frame.stack.push(list[index.value]);
+                if (nIndex < 0 || nIndex >= list.length)
+                    throw new IndexOutOfBoundsError(`list index ${nIndex} out of bounds [0;${list.length})`);
+                frame.stack.push(list[nIndex]);
             } else if (listOrString.isString()) {
                 const str = listOrString.value;
-                if (index.value < 0 || index.value >= str.length)
-                    throw new IndexOutOfBoundsError(`string index ${index.value} out of bounds [0;${str.length})`);
+                if (nIndex < 0 || nIndex >= str.length)
+                    throw new IndexOutOfBoundsError(`string index ${nIndex} out of bounds [0;${str.length})`);
                 // FIXME: does not follow Pulsar's spec (index by byte)
-                frame.stack.push(Value.fromInteger(str.codePointAt(index.value)));
+                frame.stack.push(Value.fromInteger(str.codePointAt(nIndex)));
             } else throw new ValueTypeError("cannot index a non-list/string value");
         } break;
         case InstructionCode.Concat: {
@@ -1130,11 +1145,12 @@ export class ExecutionContext {
             if (!length.isInteger())
                 throw new ValueTypeError("prefix length must be an integer");
 
-            if (length.value < 0 || length.value >= str.length)
+            const nLength = Number(length.value);
+            if (nLength < 0 || nLength >= str.length)
                 throw new IndexOutOfBoundsError("out of bounds prefix length");
             const actualStrValue = str.value;
-            str.setString(actualStrValue.slice(length.value));
-            frame.stack.push(Value.fromString(actualStrValue.slice(0, length.value)));
+            str.setString(actualStrValue.slice(nLength));
+            frame.stack.push(Value.fromString(actualStrValue.slice(0, nLength)));
         } break;
         default:
             throw new Error(`instruction ${instruction.code} (${instructionCodeToString(instruction.code)}) not implemented`);

@@ -118,10 +118,10 @@ export class NeutronReader {
     readInstruction(r) {
         const code = r.readU8();
         let arg0;
-        if (code === InstructionCode.PushDbl) {
-            arg0 = r.readF64SLEB();
-        } else {
-            arg0 = r.readI64();
+        switch (code) {
+        case InstructionCode.PushInt: arg0 = r.readSLEB();    break;
+        case InstructionCode.PushDbl: arg0 = r.readF64SLEB(); break;
+        default: arg0 = r.readI64(); break;
         }
         return {sCode: instructionCodeToString(code), code, arg0};
     }
@@ -181,7 +181,7 @@ export class NeutronReader {
         return r.readSized(r => {
             switch (valueType) {
             case ValueType.Void:    return new Value();
-            case ValueType.Integer: return Value.fromInteger(r.readI64());
+            case ValueType.Integer: return Value.fromInteger(r.readSLEB());
             case ValueType.Double:  return Value.fromDouble(r.readF64());
             case ValueType.FunctionReference:       return Value.fromFunctionReference(r.readI64());
             case ValueType.NativeFunctionReference: return Value.fromNativeFunctionReference(r.readI64());
