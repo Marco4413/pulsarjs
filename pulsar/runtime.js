@@ -897,6 +897,12 @@ export class ExecutionContext {
         case InstructionCode.PushDbl: {
             frame.stack.push(Value.fromDouble(instruction.arg0));
         } break;
+        case InstructionCode.PushFunctionReference: {
+            frame.stack.push(Value.fromFunctionReference(instruction.arg0));
+        } break;
+        case InstructionCode.PushNativeFunctionReference: {
+            frame.stack.push(Value.fromNativeFunctionReference(instruction.arg0));
+        } break;
         case InstructionCode.PushEmptyList: {
             frame.stack.push(Value.fromList([]));
         } break;
@@ -986,6 +992,19 @@ export class ExecutionContext {
                 throw new UnboundNativeError(`native function '${nativeBinding.name}' (${instruction.arg0}) not bound`);
             this.callFunction(nativeBinding);
             await nativeFunction(this);
+        } break;
+        case InstructionCode.ICall: {
+            const [ functionReference ] = popValuesFromStack(frame.stack, instruction.code, 1);
+            if (functionReference.isFunctionReference()) {
+                const functionDefinition = this.#module.getFunctionByIndex(functionReference.value);
+                this.callFunction(functionDefinition);
+            } else if (functionReference.isNativeFunctionReference()) {
+                const [nativeBinding, nativeFunction] = this.#module.getNativeByIndex(functionReference.value);
+                if (nativeFunction == null)
+                    throw new UnboundNativeError(`native function '${nativeBinding.name}' (${functionReference.value}) not bound`);
+                this.callFunction(nativeBinding);
+                await nativeFunction(this);
+            } else throw new ValueTypeError(`expected FunctionReference or NativeFunctionReference, got ${valueTypeToString(functionReference.type)}`);
         } break;
         case InstructionCode.DynSum: {
             const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
