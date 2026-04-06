@@ -23,6 +23,7 @@ function consoleWrite(...data) {
     const text  = data.map(datum => new String(datum)).join(" ");
     const spans = text.split(/(\x1B\[[\d;]*[A-Z]|\n)/gi);
 
+    let scrollToBottom = false;
     for (const span of spans) {
         if (span.startsWith("\x1B")) {
             switch (span) {
@@ -33,6 +34,7 @@ function consoleWrite(...data) {
         } else if (span === "\n") {
             const $pre = document.createElement("pre");
             $console.appendChild($pre);
+            scrollToBottom = true;
         } else {
             $console.lastChild.innerText += span;
         }
@@ -40,6 +42,10 @@ function consoleWrite(...data) {
 
     while ($console.children.length > MAX_LINES) {
         $console.children.item(0).remove();
+    }
+
+    if (scrollToBottom) {
+        $console.scrollTop = $console.scrollHeight;
     }
 }
 

@@ -1,7 +1,9 @@
 @import url('https://marco4413.github.io/static/css/light.css');
 
 #console {
+    overflow-y: auto;
     min-height: 5em;
+    max-height: 60vh;
     border: solid var(--background-color-dark) 2.5px;
 
     padding: 0.5em;
