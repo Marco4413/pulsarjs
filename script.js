@@ -105,15 +105,20 @@ function bindNatives(module) {
 
 let lastStopSignal;
 
+async function stopScript() {
+    // if runScript is called multiple times,
+    // wait until lastStopSignal is actually null
+    while (lastStopSignal != null)
+        await lastStopSignal.stop();
+    lastStopSignal = null;
+}
+
 /**
  * @param {string} fileName
  * @param {ArrayBufferLike} buffer
  */
 async function runScript(fileName, buffer) {
-    const thisStopSignal = new StopSignal();
-    if (lastStopSignal != null)
-        await lastStopSignal.stop();
-    lastStopSignal = thisStopSignal;
+    await stopScript();
 
     clearError();
     clearInput();
@@ -126,6 +131,9 @@ async function runScript(fileName, buffer) {
         const context = new ExecutionContext(module);
         context.stack.push(Value.fromList([ Value.fromString(fileName) ]));
         context.callFunctionByName("main");
+
+        const thisStopSignal = new StopSignal();
+        lastStopSignal = thisStopSignal;
 
         try {
             await context.runAsync(thisStopSignal);
