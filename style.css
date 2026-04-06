@@ -1,5 +1,9 @@
 @import url('https://marco4413.github.io/static/css/light.css');
 
+div {
+    margin: 0.5em;
+}
+
 #console {
     overflow: auto;
     min-height: 5em;
@@ -24,7 +28,6 @@
 }
 
 #script-label {
-    margin: 2px;
     background-color: var(--background-color-dark);
     border-radius: 5px;
     padding: 3px;
