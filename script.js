@@ -143,6 +143,12 @@ window.addEventListener("load", async () => {
     $console = document.getElementById("console");
     $errorReport = document.getElementById("error-report");
 
+    const $clearIO = document.getElementById("clear-io");
+    $clearIO.addEventListener("click", () => {
+        clearInput();
+        consoleClear();
+    });
+
     /** @type {HTMLInputElement} */
     const $input = document.getElementById("input");
     $input.addEventListener("keypress", ev => {
