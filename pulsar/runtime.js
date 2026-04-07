@@ -1075,12 +1075,57 @@ export class ExecutionContext {
                 throw new ValueTypeError("cannot perform modulus between non-integer values");
             frame.stack.push(Value.fromInteger(a.value % b.value));
         } break;
+        // TODO: clamp to 64 bits if bugs are found within bit operations
+        case InstructionCode.BitAnd: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isInteger() || !b.isInteger())
+                throw new ValueTypeError("cannot perform bit operations between non-integer values");
+            frame.stack.push(Value.fromInteger(a.value & b.value));
+        } break;
+        case InstructionCode.BitOr: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isInteger() || !b.isInteger())
+                throw new ValueTypeError("cannot perform bit operations between non-integer values");
+            frame.stack.push(Value.fromInteger(a.value | b.value));
+        } break;
+        case InstructionCode.BitNot: {
+            const [value] = popValuesFromStack(frame.stack, instruction.code, 1);
+            if (!value.isInteger())
+                throw new ValueTypeError("cannot perform bit operations on non-integer values");
+            frame.stack.push(Value.fromInteger(~value.value));
+        } break;
+        case InstructionCode.BitXor: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isInteger() || !b.isInteger())
+                throw new ValueTypeError("cannot perform bit operations between non-integer values");
+            frame.stack.push(Value.fromInteger(a.value ^ b.value));
+        } break;
+        case InstructionCode.BitShiftLeft: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isInteger() || !b.isInteger())
+                throw new ValueTypeError("cannot perform bit operations between non-integer values");
+            frame.stack.push(Value.fromInteger(a.value << b.value));
+        } break;
+        case InstructionCode.BitShiftRight: {
+            const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
+            if (!a.isInteger() || !b.isInteger())
+                throw new ValueTypeError("cannot perform bit operations between non-integer values");
+            frame.stack.push(Value.fromInteger(a.value >> b.value));
+        } break;
         case InstructionCode.Floor: {
             const [value] = getValuesFromStack(frame.stack, instruction.code, 1);
             if (value.isInteger()) {
                 // do nothing, already integer
             } else if (value.isDouble()) {
                 value.setInteger(Math.floor(value.value));
+            } else throw new ValueType("cannot floor a non-numeric value");
+        } break;
+        case InstructionCode.Ceil: {
+            const [value] = getValuesFromStack(frame.stack, instruction.code, 1);
+            if (value.isInteger()) {
+                // do nothing, already integer
+            } else if (value.isDouble()) {
+                value.setInteger(Math.ceil(value.value));
             } else throw new ValueType("cannot floor a non-numeric value");
         } break;
         case InstructionCode.Compare: {
@@ -1216,6 +1261,19 @@ export class ExecutionContext {
                 throw new IndexOutOfBoundsError("cannot take tail of an empty list");
             list.value.shift();
         } break;
+        case InstructionCode.Unpack: {
+            const [list] = popValuesFromStack(frame.stack, instruction.code, 1);
+            if (!list.isList())
+                throw new ValueTypeError("cannot unpack a non-list value");
+
+            const unpackCount = instruction.arg0;
+            if (unpackCount > 0) {
+                if (unpackCount > list.value.length)
+                    throw new IndexOutOfBoundsError("list index out of bounds");
+                const unpacked = popValuesFromStack(list.value, instruction.code, unpackCount);
+                frame.stack.push(...unpacked);
+            }
+        } break;
         case InstructionCode.Prefix: {
             const [str, length] = getValuesFromStack(frame.stack, instruction.code, 2);
             frame.stack.pop(); // length
@@ -1231,6 +1289,40 @@ export class ExecutionContext {
             const actualStrValue = str.value;
             str.setString(actualStrValue.slice(nLength));
             frame.stack.push(Value.fromString(actualStrValue.slice(0, nLength)));
+        } break;
+        case InstructionCode.Suffix: {
+            const [str, length] = getValuesFromStack(frame.stack, instruction.code, 2);
+            frame.stack.pop(); // length
+
+            if (!str.isString())
+                throw new ValueTypeError("cannot take suffix of a non-string value");
+            if (!length.isInteger())
+                throw new ValueTypeError("suffix length must be an integer");
+
+            const nLength = Number(length.value);
+            if (nLength < 0 || nLength >= str.length)
+                throw new IndexOutOfBoundsError("out of bounds suffix length");
+            const actualStrValue = str.value;
+            str.setString(actualStrValue.slice(0, actualStrValue.length-nLength));
+            frame.stack.push(Value.fromString(actualStrValue.slice(actualStrValue.length-nLength)));
+        } break;
+        case InstructionCode.Substr: {
+            const [str, startIndex, endIndex] = getValuesFromStack(frame.stack, instruction.code, 3);
+            frame.stack.pop(); // endIndex
+            frame.stack.pop(); // startIndex
+
+            if (!str.isString())
+                throw new ValueTypeError("cannot take substr of a non-string value");
+            if (!startIndex.isInteger() || !endIndex.isInteger())
+                throw new ValueTypeError("substr indices must be integers");
+
+            if (startIndex.value >= endIndex.value || startIndex.value >= str.value.length) {
+                frame.stack.push(Value.fromString(""));
+            } else {
+                const nStartIndex = Number(startIndex.value);
+                const nEndIndex   = Number(endIndex.value);
+                frame.stack.push(Value.fromString(str.value.slice(nStartIndex, nEndIndex)));
+            }
         } break;
         case InstructionCode.IsVoid:
         case InstructionCode.IsInteger:
