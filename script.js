@@ -111,11 +111,16 @@ function bindNatives(module) {
 let lastStopSignal;
 
 async function stopScript() {
-    // if runScript is called multiple times,
-    // wait until lastStopSignal is actually null
-    while (lastStopSignal != null)
-        await lastStopSignal.stop();
-    lastStopSignal = null;
+    while (lastStopSignal != null) {
+        const stopSignal = lastStopSignal;
+        await stopSignal.stop();
+
+        // if no other script was ran or this signal is still active
+        if (lastStopSignal == null || lastStopSignal === stopSignal) {
+            // clear the signal and resume execution
+            lastStopSignal = null;
+        }
+    }
 }
 
 /**
