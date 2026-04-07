@@ -643,6 +643,32 @@ export class Value {
 
     /** @returns {Value} */
     clone() { return new Value(this); }
+
+    /** @param {Value} other */
+    equals(other) {
+        if (this.type !== other.type && !(this.isNumber() && other.isNumber())) {
+            return false;
+        }
+
+        switch (this.type) {
+        case ValueType.List:
+            if (this.value.length !== other.value.length)
+                return false;
+            for (let i = 0; i < this.value.length; ++i) {
+                const a = this.value[i];
+                const b = other.value[i];
+                if (!a.equals(b))
+                    return false;
+            }
+            return true;
+        case ValueType.Custom:
+            throw new Error("equals for Custom not implemented");
+        default:
+            // using == because we're sure that types are the same.
+            // equality may happen between number and bigint so === won't work
+            return this.value == other.value;
+        }
+    }
 }
 
 /**
@@ -1146,15 +1172,7 @@ export class ExecutionContext {
         } break;
         case InstructionCode.Equals: {
             const [a, b] = popValuesFromStack(frame.stack, instruction.code, 2);
-            if (a.type !== b.type && !(a.isNumber() && b.isNumber())) {
-                frame.stack.push(Value.fromInteger(0));
-            } else {
-                if (a.isList() || a.isCustom())
-                    throw new Error("Equals for List and Custom not implemented");
-                // using == because we're sure that types are the same.
-                // equality may happen between number and bigint so === won't work
-                frame.stack.push(Value.fromInteger(a.value == b.value ? 1 : 0));
-            }
+            frame.stack.push(Value.fromInteger(a.equals(b) ? 1 : 0));
         } break;
         case InstructionCode.J:
             frame.instructionIndex -= 1;
