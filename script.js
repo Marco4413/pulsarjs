@@ -1,11 +1,13 @@
+import { PrintBindings } from "./pulsar/bindings/print.js";
+import { StdIOBindings } from "./pulsar/bindings/stdio.js";
+import { ThreadBindings } from "./pulsar/bindings/thread.js";
+import { TimeBindings } from "./pulsar/bindings/time.js";
 import { readNeutronBuffer } from "./pulsar/neutron.js";
 import {
     ExecutionContext,
     Module,
     StopSignal,
     Value,
-    ValueTypeError,
-    valueTypeToString,
     getErrorReport,
 } from "./pulsar/runtime.js";
 
@@ -94,18 +96,16 @@ function clearError() {
 
 /** @param {Module} module */
 function bindNatives(module) {
-    module.bindNativeByName("stdin/read", async context => {
-        context.currentStack.push(Value.fromString(await getInput(context.stopSignal)));
-    });
-    module.bindNativeByName("stdout/write!", context => {
-        const s = context.currentFrame.locals[0];
-        if (!s.isString())
-            throw new ValueTypeError(`expected String, got ${valueTypeToString(s.type)}`);
-        consoleWrite(s.value);
-    });
-    module.bindNativeByName("println!", context => {
-        consoleWrite(context.currentFrame.locals[0].value, "\n");
-    });
+    const bindings = [
+        new PrintBindings(module, consoleWrite),
+        new StdIOBindings(module, getInput, consoleWrite),
+        new ThreadBindings(module),
+        new TimeBindings(module),
+    ];
+
+    for (const binding of bindings) {
+        binding.bind();
+    }
 }
 
 let lastStopSignal;
