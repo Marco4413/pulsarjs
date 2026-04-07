@@ -252,11 +252,16 @@ export function instructionCodeToString(instructionCode) {
 export class StopSignalError extends Error{}
 export class StopSignal {
     #isStopping;
+    #stopPromise;
+    #stop;
     #completePromise;
     #complete;
 
     constructor() {
         this.#isStopping = false;
+        this.#stopPromise = new Promise(resolve => {
+            this.#stop = resolve;
+        });
         this.#completePromise = new Promise(resolve => {
             this.#complete = resolve;
         });
@@ -264,9 +269,17 @@ export class StopSignal {
 
     get isStopping() { return this.#isStopping; }
 
-    stop()     { this.#isStopping = true; return this.#completePromise; }
+    stop() {
+        this.#isStopping = true;
+        this.#stop();
+        return this.waitComplete();
+    }
+
     raise()    { throw new StopSignalError("stop requested"); }
     complete() { this.#complete(); }
+
+    waitStop()     { return this.#stopPromise; }
+    waitComplete() { return this.#completePromise; }
 
     handleRequest() {
         if (this.#isStopping) throw new StopSignalError("stop requested");
