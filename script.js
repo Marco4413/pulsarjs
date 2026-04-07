@@ -10,53 +10,10 @@ import {
     Value,
     getErrorReport,
 } from "./pulsar/runtime.js";
+import { DomConsole } from "./utils/console.js";
 
-/** @type {HTMLElement} */
-let $console;
-function consoleWrite(...data) {
-    if ($console == null) return;
-
-    const MAX_LINES = 128;
-
-    if ($console.children.length <= 0) {
-        consoleClear();
-    }
-
-    const text  = data.map(datum => new String(datum)).join(" ");
-    const spans = text.split(/(\x1B\[[\d;]*[A-Z]|\n)/gi);
-
-    let scrollToBottom = false;
-    for (const span of spans) {
-        if (span.startsWith("\x1B")) {
-            switch (span) {
-            case "\x1B[2J": consoleClear(); break;
-            default:
-                console.warn(`unhandled escape sequence: ^${span.slice(1)}`);
-            }
-        } else if (span === "\n") {
-            const $pre = document.createElement("pre");
-            $console.appendChild($pre);
-            scrollToBottom = true;
-        } else {
-            $console.lastChild.innerText += span;
-        }
-    }
-
-    while ($console.children.length > MAX_LINES) {
-        $console.children.item(0).remove();
-    }
-
-    if (scrollToBottom) {
-        $console.scrollTop = $console.scrollHeight;
-    }
-}
-
-function consoleClear() {
-    if ($console == null) return;
-    $console.innerHTML = "";
-    const $pre = document.createElement("pre");
-    $console.appendChild($pre);
-}
+/** @type {DomConsole} */
+const myConsole = new DomConsole();
 
 /** @type {string[]} */
 let inputBuffer = [];
@@ -97,8 +54,8 @@ function clearError() {
 /** @param {Module} module */
 function bindNatives(module) {
     const bindings = [
-        new PrintBindings(module, consoleWrite),
-        new StdIOBindings(module, getInput, consoleWrite),
+        new PrintBindings(module, (...data) => myConsole.write(...data)),
+        new StdIOBindings(module, getInput, (...data) => myConsole.write(...data)),
         new ThreadBindings(module),
         new TimeBindings(module),
     ];
@@ -132,7 +89,7 @@ async function runScript(fileName, buffer) {
 
     clearError();
     clearInput();
-    consoleClear();
+    myConsole.clear();
 
     try {
         const module = readNeutronBuffer(buffer);
@@ -158,13 +115,15 @@ async function runScript(fileName, buffer) {
 }
 
 window.addEventListener("load", async () => {
-    $console = document.getElementById("console");
+    const $console = document.getElementById("console");
+    $console.replaceWith(myConsole.$element);
+
     $errorReport = document.getElementById("error-report");
 
     const $clearIO = document.getElementById("clear-io");
     $clearIO.addEventListener("click", () => {
         clearInput();
-        consoleClear();
+        myConsole.clear();
     });
 
     /** @type {HTMLInputElement} */
@@ -172,7 +131,7 @@ window.addEventListener("load", async () => {
     $input.addEventListener("keypress", ev => {
         if (ev.key === "Enter") {
             sendInput(ev.target.value);
-            consoleWrite(ev.target.value, "\n");
+            myConsole.write(ev.target.value, "\n");
             ev.target.value = "";
         }
     });

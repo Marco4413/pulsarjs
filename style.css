@@ -4,16 +4,15 @@ div {
     margin: 0.5em;
 }
 
-#console {
+.console {
     overflow: auto;
-    min-height: 5em;
-    max-height: 60vh;
+    height: 60vh;
     border: solid var(--background-color-dark) 2.5px;
 
     padding: 0.5em;
 }
 
-#console > * {
+.console > * {
     margin: 0px;
     padding: 0px;
 }
