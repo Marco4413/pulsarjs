@@ -299,21 +299,33 @@ export class UnboundNativeError    extends Error{}
 export class StackUnderflowError   extends Error{}
 export class ValueTypeError        extends Error{}
 
+/**
+ * @typedef {object} CustomType
+ * @property {string} name
+ * @property {() => any} globalDataFactory
+ */
+
 export class Module {
     /** @type {FunctionDefinition[]}    */ #functions;
     /** @type {FunctionDefinition[]}    */ #nativeBindings;
-    /** @type {(NativeFunction|null)[]} */ #nativeFunctions;
     /** @type {GlobalDefinition[]}      */ #globals;
     /** @type {Value[]}                 */ #constants;
     /** @type {SourceDebugSymbol[]}     */ #sourceDebugSymbols;
 
+    /** @type {(NativeFunction|null)[]} */ #nativeFunctions;
+    /** @type {Map<number, CustomType>} */ #customTypes;
+    #lastCustomTypeId;
+
     constructor() {
         this.#functions       = [];
         this.#nativeBindings  = [];
-        this.#nativeFunctions = [];
         this.#globals         = [];
         this.#constants       = [];
         this.#sourceDebugSymbols = [];
+
+        this.#nativeFunctions  = [];
+        this.#customTypes      = new Map();
+        this.#lastCustomTypeId = 0;
     }
 
     /** @param  {...FunctionDefinition} functionDefinitions */
@@ -400,6 +412,15 @@ export class Module {
         return this.#constants[index].clone();
     }
 
+    /** @returns {Map<number, any>} */
+    createCustomTypeGlobalData() {
+        const globalTypeData = new Map();
+        for (const [typeId, type] of this.#customTypes.entries()) {
+            globalTypeData.set(typeId, type.globalDataFactory != null ? type.globalDataFactory() : null);
+        }
+        return globalTypeData;
+    }
+
     /**
      * @param {string} name
      * @param {NativeFunction} nativeFunction
@@ -414,6 +435,17 @@ export class Module {
             }
         }
         return false;
+    }
+
+    /**
+     * @param {string} name
+     * @param {() => object} [globalDataFactory]
+     * @returns {number} typeId
+     */
+    bindCustomType(name, globalDataFactory) {
+        const typeId = ++this.#lastCustomTypeId;
+        this.#customTypes.set(typeId, { name, globalDataFactory });
+        return typeId;
     }
 
     /**
@@ -514,11 +546,15 @@ function cloneValueList(list) {
     return cloned;
 }
 
-// TODO: custom types
+/**
+ * @typedef {object} CustomValue
+ * @property {number} typeId
+ * @property {any} data
+ */
 
 export class Value {
     /** @type {ValueType} */ #type;
-    /** @type {undefined|number|string|Value[]} */ #value;
+    /** @type {undefined|number|string|Value[]|CustomValue} */ #value;
 
     /** @param {Value} [other] if specified, it is copied */
     constructor(other) {
@@ -533,7 +569,7 @@ export class Value {
             case ValueType.NativeFunctionReference: this.setNativeFunctionReference(other.value); break;
             case ValueType.List:                    this.setList(other.value);                    break;
             case ValueType.String:                  this.setString(other.value);                  break;
-            case ValueType.Custom:
+            case ValueType.Custom:                  this.setCustom(other.value);                  break;
             default:
                 throw new Error(`copy not implemented for ${other.type} (${valueTypeToString(other.type)})`);
             }
@@ -609,9 +645,13 @@ export class Value {
         return this;
     }
 
-    /** @param {object} value */
+    /** @throws {ValueTypeError} @param {{ typeId: number? }|CustomValue} value */
     setCustom(value) {
-        throw new Error("setCustom not implemented");
+        if (value.typeId == null)
+            throw new ValueTypeError("given typeId is null");
+        this.#type  = ValueType.Custom;
+        this.#value = { typeId: value.typeId, data: value.data };
+        return this;
     }
 
     isVoid()                    { return this.#type === ValueType.Void;                    }
@@ -623,6 +663,7 @@ export class Value {
     isList()                    { return this.#type === ValueType.List;                    }
     isString()                  { return this.#type === ValueType.String;                  }
     isCustom()                  { return this.#type === ValueType.Custom;                  }
+    isCustomOf(typeId)          { return this.isCustom() && this.#value.typeId === typeId; }
 
     /** @throws {ValueTypeError} @param {bigint|number} value */
     static fromInteger(value)                 { return new Value().setInteger(value);                 }
@@ -638,7 +679,7 @@ export class Value {
     static fromList(value)                    { return new Value().setList(value);                    }
     /** @param {string} value */
     static fromString(value)                  { return new Value().setString(value);                  }
-    /** @param {object} value */
+    /** @param {CustomValue} value */
     static fromCustom(value)                  { return new Value().setCustom(value);                  }
 
     /** @returns {Value} */
@@ -662,7 +703,8 @@ export class Value {
             }
             return true;
         case ValueType.Custom:
-            throw new Error("equals for Custom not implemented");
+            return this.value.typeId === other.value.typeId
+                && this.value.data   === other.value.data;
         default:
             // using == because we're sure that types are the same.
             // equality may happen between number and bigint so === won't work
@@ -711,6 +753,8 @@ export class ExecutionContext {
     #module;
     /** @type {Value[]} */
     #globals;
+    /** @type {Map<number, object>} */
+    #globalTypeData;
     /** @type {Value[]} */
     #stack;
     /** @type {Frame[]} */
@@ -722,11 +766,12 @@ export class ExecutionContext {
      * @param {Module} module
      */
     constructor(module) {
-        this.#module     = module;
-        this.#globals    = module.createGlobals();
-        this.#stack      = [];
-        this.#callStack  = [];
-        this.#stopSignal = undefined;
+        this.#module         = module;
+        this.#globals        = module.createGlobals();
+        this.#globalTypeData = module.createCustomTypeGlobalData();
+        this.#stack          = [];
+        this.#callStack      = [];
+        this.#stopSignal     = undefined;
     }
 
     get module() { return this.#module; }
@@ -790,6 +835,15 @@ export class ExecutionContext {
         if (index < 0 || index >= this.#globals.length)
             throw new IndexOutOfBoundsError(`global index ${index} out of bounds [0;${this.#globals.length})`);
         return this.#globals[index];
+    }
+
+    /**
+     * @param {number?} typeId
+     * @returns {any}
+     */
+    getCustomTypeGlobalData(typeId) {
+        if (typeId == null) return null;
+        return this.#globalTypeData.get(typeId) ?? null;
     }
 
     /**
