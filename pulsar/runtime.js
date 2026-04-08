@@ -899,9 +899,10 @@ export class ExecutionContext {
     }
 
     /**
-     * async to support async native functions
+     * async to support async native functions.
+     * calls `stopSignal.complete()` only when the step terminates execution
      * @throws any runtime error
-     * @param {StopSignal} stopSignal
+     * @param {StopSignal} [stopSignal]
      */
     async step(stopSignal) {
         if (this.isDone) return;
@@ -910,8 +911,14 @@ export class ExecutionContext {
 
         try {
             this.#step();
+            if (this.isDone) {
+                this.#stopSignal.complete();
+            }
+        } catch (error) {
+            this.#stopSignal.complete();
+            throw error;
         } finally {
-            this.#clearStopSignal();
+            this.#stopSignal = undefined;
         }
     }
 
@@ -929,7 +936,7 @@ export class ExecutionContext {
                 this.#stopSignal.handleRequest();
             }
         } finally {
-            this.#clearStopSignal();
+            this.#completeStopSignal();
         }
     }
 
@@ -959,7 +966,7 @@ export class ExecutionContext {
                 }
             }
         } finally {
-            this.#clearStopSignal();
+            this.#completeStopSignal();
         }
     }
 
@@ -969,7 +976,7 @@ export class ExecutionContext {
         return this.#stopSignal;
     }
 
-    #clearStopSignal() {
+    #completeStopSignal() {
         if (this.#stopSignal != null) {
             this.#stopSignal.complete();
             this.#stopSignal = undefined;
