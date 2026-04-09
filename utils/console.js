@@ -1,4 +1,4 @@
-export class DomConsole {
+export class StdOut {
     /** @type {HTMLElement} */
     #$element;
 
@@ -6,10 +6,10 @@ export class DomConsole {
     #cursorY;
 
     constructor() {
-        const $console = document.createElement("div");
-        $console.classList.add("console");
+        const $stdout = document.createElement("div");
+        $stdout.classList.add("stdout");
 
-        this.#$element = $console;
+        this.#$element = $stdout;
         this.#cursorX  = 0;
         this.#cursorY  = 0;
     }
@@ -85,5 +85,106 @@ export class DomConsole {
             const $line = document.createElement("pre");
             $console.appendChild($line);
         }
+    }
+}
+
+export class StdIn {
+    /** @type {HTMLElement} */
+    #$element;
+
+    #inputBuffer;
+    #inputListeners;
+
+    constructor() {
+        this.#inputBuffer = [];
+        this.#inputListeners = [];
+
+        const $stdinContainer = document.createElement("div");
+        $stdinContainer.classList.add("stdin-container");
+
+        const $stdin = document.createElement("input");
+        $stdin.classList.add("stdin");
+        $stdin.type = "text";
+        $stdin.addEventListener("keypress", ev => {
+            if (ev.key === "Enter") {
+                this.#sendInput(ev.target.value);
+                ev.target.value = "";
+            }
+        });
+
+        $stdinContainer.appendChild($stdin);
+        this.#$element = $stdinContainer;
+    }
+
+    get $element() { return this.#$element; }
+
+    onInput(callback) {
+        this.#inputListeners.push(callback);
+    }
+
+    clear() {
+        this.#inputBuffer = [];
+    }
+
+    async read(stopSignal) {
+        // TODO: hook into onInput
+        while (this.#inputBuffer.length <= 0) {
+            if (stopSignal != null) stopSignal.handleRequest();
+            await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+        return this.#inputBuffer.shift();
+    }
+
+    #sendInput(text) {
+        this.#inputBuffer.push(text);
+        this.#inputListeners.forEach(listener => listener(text));
+    }
+}
+
+export class Console {
+    #stdout;
+    #stdin;
+
+    #$element;
+
+    constructor() {
+        this.#stdout = new StdOut();
+        this.#stdin  = new StdIn();
+
+        this.#stdin.onInput(text => {
+            this.write(text, "\n");
+        });
+
+        const $clearAll = document.createElement("button");
+        $clearAll.innerText = "Clear";
+        $clearAll.classList.add("console-clear");
+        $clearAll.addEventListener("click", () => {
+            this.clearAll();
+        });
+
+        const $stdout = this.#stdout.$element;
+        const $stdin  = this.#stdin.$element;
+        $stdin.insertBefore($clearAll, $stdin.firstChild);
+
+        const $console = document.createElement("div");
+        $console.classList.add("console");
+        $console.appendChild($stdout);
+        $console.appendChild($stdin);
+        this.#$element = $console;
+    }
+
+    get $element() { return this.#$element; }
+
+    clearAll() {
+        this.#stdin.clear();
+        this.#stdout.clear();
+    }
+
+    write(...data) {
+        this.#stdout.write(...data);
+    }
+
+    read(stopSignal) {
+        return this.#stdin.read(stopSignal);
     }
 }

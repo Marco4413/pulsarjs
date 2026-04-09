@@ -4,7 +4,7 @@ div {
     margin: 0.5em;
 }
 
-.console {
+.stdout {
     overflow: auto;
     height: 60vh;
     border: solid var(--background-color-dark) 2.5px;
@@ -12,17 +12,17 @@ div {
     padding: 0.5em;
 }
 
-.console > * {
+.stdout > * {
     margin: 0px;
     padding: 0px;
 }
 
-#input-container {
+.stdin-container {
     display: flex;
     margin: 0.5em;
 }
 
-#input {
+.stdin {
     flex-grow: 1;
 }
 

@@ -10,28 +10,9 @@ import {
     Value,
     getErrorReport,
 } from "./pulsar/runtime.js";
-import { DomConsole } from "./utils/console.js";
+import { Console } from "./utils/console.js";
 
-/** @type {DomConsole} */
-const myConsole = new DomConsole();
-
-/** @type {string[]} */
-let inputBuffer = [];
-function sendInput(text) {
-    inputBuffer.push(text);
-}
-
-function clearInput() {
-    inputBuffer = [];
-}
-
-async function getInput(stopSignal) {
-    while (inputBuffer.length <= 0) {
-        if (stopSignal != null) stopSignal.handleRequest();
-        await new Promise(res => requestAnimationFrame(res));
-    }
-    return inputBuffer.shift();
-}
+const myConsole = new Console();
 
 /** @type {HTMLPreElement} */
 let $errorReport;
@@ -54,8 +35,11 @@ function clearError() {
 /** @param {Module} module */
 function bindNatives(module) {
     const bindings = [
-        new PrintBindings(module, (...data) => myConsole.write(...data)),
-        new StdIOBindings(module, getInput, (...data) => myConsole.write(...data)),
+        new PrintBindings(module,
+                (...data) => myConsole.write(...data)),
+        new StdIOBindings(module,
+                (stopSignal) => myConsole.read(stopSignal),
+                (...data)    => myConsole.write(...data)),
         new ThreadBindings(module),
         new TimeBindings(module),
     ];
@@ -88,8 +72,7 @@ async function runScript(fileName, buffer) {
     await stopScript();
 
     clearError();
-    clearInput();
-    myConsole.clear();
+    myConsole.clearAll();
 
     try {
         const module = readNeutronBuffer(buffer);
@@ -119,22 +102,6 @@ window.addEventListener("load", async () => {
     $console.replaceWith(myConsole.$element);
 
     $errorReport = document.getElementById("error-report");
-
-    const $clearIO = document.getElementById("clear-io");
-    $clearIO.addEventListener("click", () => {
-        clearInput();
-        myConsole.clear();
-    });
-
-    /** @type {HTMLInputElement} */
-    const $input = document.getElementById("input");
-    $input.addEventListener("keypress", ev => {
-        if (ev.key === "Enter") {
-            sendInput(ev.target.value);
-            myConsole.write(ev.target.value, "\n");
-            ev.target.value = "";
-        }
-    });
 
     /** @type {HTMLSelectElement} */
     const $examplePicker = document.getElementById("example-picker");
