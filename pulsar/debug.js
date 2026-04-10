@@ -48,6 +48,12 @@ export function createSourcePositionCursor(sourcePosition) {
 }
 
 /**
+ * @typedef {object} SourceViewOptions
+ * @property {number} [linesBefore]
+ * @property {number} [linesAfter]
+ */
+
+/**
  * @typedef {object} SourceViewLine
  * @property {number} line
  * @property {string} text
@@ -56,14 +62,18 @@ export function createSourcePositionCursor(sourcePosition) {
 /**
  * @param {string} source
  * @param {SourcePosition} sourcePosition
+ * @param {SourceViewOptions} [options]
  * @returns {SourceViewLine[]}
  */
-export function getSourceView(source, sourcePosition) {
+export function getSourceView(source, sourcePosition, options) {
     // FIXME: this is really bad (splitting the whole source code), find a better way to handle this
     const lines = source.split(/\r\n|\r|\n/g);
 
+    const linesBefore = options?.linesBefore ?? 2;
+    const linesAfter  = options?.linesAfter  ?? 0;
+
     const view = [];
-    for (let lineOffset = -2; lineOffset <= 0; ++lineOffset) {
+    for (let lineOffset = -linesBefore; lineOffset <= linesAfter; ++lineOffset) {
         const lineIndex = sourcePosition.line + lineOffset;
         if (lineIndex >= 0 && lineIndex < lines.length) {
             view.push({ line: lineIndex, text: lines[lineIndex] });
@@ -82,39 +92,48 @@ export function getSourceView(source, sourcePosition) {
  */
 
 /**
+ * @typedef {SourceViewOptions} SourceDebugDataOptions
+ */
+
+/**
  * @param {SourceDebugSymbol} sourceDebugSymbol
  * @param {SourcePosition} sourcePosition
+ * @param {SourceDebugDataOptions} [options]
  * @returns {SourceDebugData}
  */
-export function getSourceDebugData(sourceDebugSymbol, sourcePosition) {
+export function getSourceDebugData(sourceDebugSymbol, sourcePosition, options) {
     /** @type {SourceDebugData} */
     return {
         path: sourceDebugSymbol.path,
         source: sourceDebugSymbol.source,
         sourcePosition,
-        view: getSourceView(sourceDebugSymbol.source, sourcePosition),
+        view: getSourceView(sourceDebugSymbol.source, sourcePosition, options),
         cursor: createSourcePositionCursor(sourcePosition),
     };
 }
 
 /**
  * @param {FunctionDebugSymbol} [functionDebugSymbol]
+ * @param {SourceDebugDataOptions} [options]
  * @returns {SourceDebugData|undefined}
  */
-export function getFunctionSourceDebugData(functionDebugSymbol) {
+export function getFunctionSourceDebugData(functionDebugSymbol, options) {
     if (functionDebugSymbol == null || functionDebugSymbol.resolvedSource == null)
         return undefined;
-    return getSourceDebugData(functionDebugSymbol.resolvedSource, functionDebugSymbol.token.sourcePosition);
+    return getSourceDebugData(functionDebugSymbol.resolvedSource, functionDebugSymbol.token.sourcePosition, options);
 }
 
 /**
  * @param {BlockDebugSymbol[]} [codeDebugSymbols]
  * @param {number} instructionIndex
+ * @param {SourceDebugDataOptions} [options]
  * @returns {SourceDebugData|undefined}
  */
-export function getCodeSourceDebugData(codeDebugSymbols, instructionIndex) {
+export function getCodeSourceDebugData(codeDebugSymbols, instructionIndex, options) {
     if (codeDebugSymbols == null)
         return undefined;
+    // TODO: codeDebugSymbols is sorted by the definition of the format,
+    //  we could apply a binary search to speed things up
     let debugSymbol;
     for (const blockDebugSymbol of codeDebugSymbols) {
         if (blockDebugSymbol.startIndex < instructionIndex)
@@ -123,15 +142,16 @@ export function getCodeSourceDebugData(codeDebugSymbols, instructionIndex) {
     }
     if (debugSymbol == null || debugSymbol.resolvedSource == null)
         return undefined;
-    return getSourceDebugData(debugSymbol.resolvedSource, debugSymbol.token.sourcePosition);
+    return getSourceDebugData(debugSymbol.resolvedSource, debugSymbol.token.sourcePosition, options);
 }
 
 /**
  * @param {GlobalDebugSymbol} [globalDebugSymbol]
+ * @param {SourceDebugDataOptions} [options]
  * @returns {SourceDebugData|undefined}
  */
-export function getGlobalSourceDebugData(globalDebugSymbol) {
+export function getGlobalSourceDebugData(globalDebugSymbol, options) {
     if (globalDebugSymbol == null || globalDebugSymbol.resolvedSource == null)
         return undefined;
-    return getSourceDebugData(globalDebugSymbol.resolvedSource, globalDebugSymbol.token.sourcePosition);
+    return getSourceDebugData(globalDebugSymbol.resolvedSource, globalDebugSymbol.token.sourcePosition, options);
 }
