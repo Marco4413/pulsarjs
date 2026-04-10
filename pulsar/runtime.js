@@ -910,7 +910,7 @@ export class ExecutionContext {
         this.#setStopSignal(stopSignal);
 
         try {
-            this.#step();
+            await this.#step();
             if (this.isDone) {
                 this.#stopSignal.complete();
             }
