@@ -508,12 +508,11 @@ export class Module {
  */
 
 /**
- * generates a pretty error report using debug information if available
- * @param {Error} error
- * @param {Frame} [frame]
+ * @param {Frame} frame
+ * @param {SourceDebugData} [options]
  * @returns {string}
  */
-export function getErrorReport(error, frame) {
+export function getFrameReport(frame, options) {
     /** @param {SourceDebugData} debugData */
     function getFullViewWithPositionTag(debugData) {
         const positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} |`;
@@ -531,19 +530,18 @@ export function getErrorReport(error, frame) {
         return viewWithTag.trimEnd();
     }
 
-    let report = `${error.constructor.name}: ${error.message}`;
-    if (frame == null) return report;
-
-    report += `\ninside function '${frame.function.name}'`;
+    // HACK: we should not check for existance of code (a function may have no code at all)
+    const callTag = frame.function.code == null ? "*" : "";
+    let report = `inside function (${callTag}${frame.function.name})`;
 
     let debugData;
 
-    debugData = getFunctionSourceDebugData(frame.function.debugSymbol);
+    debugData = getFunctionSourceDebugData(frame.function.debugSymbol, options);
     if (debugData != null && debugData.view.length > 0) {
-        report += ` (${debugData.path})\ndefined at:\n${getFullViewWithPositionTag(debugData)}`;
+        report += ` '${debugData.path}'\ndefined at:\n${getFullViewWithPositionTag(debugData)}`;
     }
 
-    debugData = getCodeSourceDebugData(frame.function.codeDebugSymbols, frame.instructionIndex);
+    debugData = getCodeSourceDebugData(frame.function.codeDebugSymbols, frame.instructionIndex, options);
     if (debugData != null && debugData.view.length > 0) {
         report += `\nduring execution of:\n${getFullViewWithPositionTag(debugData)}`;
     }
@@ -877,6 +875,7 @@ export class ExecutionContext {
         }
 
         const callStack = this.#callStack;
+        if (callStack.length <= 0) return `${tracePrefix}<empty call stack>`;
         callsToReport = Math.min(callStack.length, Math.max(0, callsToReport ?? callStack.length));
 
         const lowCallsCount  = Math.floor(callsToReport / 2);
@@ -896,6 +895,34 @@ export class ExecutionContext {
             report += `${getCallTrace(frame, tracePrefix)}\n`;
         }
         return report.trimEnd();
+    }
+
+    /**
+     * @param {number} [callStackDepth]
+     * @param {SourceDebugData} [frameReportOptions]
+     * @returns {string}
+     */
+    getStateReport(callStackDepth, frameReportOptions) {
+        if (this.#callStack.length <= 0) return "nothing to report";
+        let report = getFrameReport(this.currentFrame, frameReportOptions);
+        report += "\ncall stack:\n";
+        report += this.getCallStackReport(callStackDepth, "  ");
+        return report;
+    }
+
+    /**
+     * @param {Error} error
+     * @param {number} [callStackDepth]
+     * @param {SourceDebugData} [frameReportOptions]
+     * @returns {string}
+     */
+    getErrorReport(error, callStackDepth, frameReportOptions) {
+        let report = `${error.constructor.name}: ${error.message}`;
+        if (this.#callStack.length <= 0) return report;
+        report += `\n${getFrameReport(this.currentFrame, frameReportOptions)}`;
+        report += "\ncall stack:\n";
+        report += this.getCallStackReport(callStackDepth, "  ");
+        return report;
     }
 
     /**
