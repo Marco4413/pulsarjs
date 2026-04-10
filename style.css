@@ -1,7 +1,15 @@
 @import url('https://marco4413.github.io/static/css/light.css');
 
+body {
+    margin-bottom: 5em;
+}
+
 div {
     margin: 0.5em;
+}
+
+.collapsed {
+    visibility: collapse;
 }
 
 .stdout {
@@ -36,6 +44,6 @@ div {
     background-color: var(--hover-color-light);
 }
 
-#error-report {
+#report {
     white-space: pre-wrap;
 }
