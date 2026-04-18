@@ -59,7 +59,7 @@ export class PulsarScript {
 
     /**
      * @param {SourceDebugDataOptions} [frameReportOptions]
-     * @returns {() => Promise<void>} step function
+     * @returns {() => Promise<boolean>} step function, throws runtime errors, returns true if more steps can be taken
      */
     runDebug(frameReportOptions) {
         if (this.#running) return null;
@@ -71,16 +71,20 @@ export class PulsarScript {
                 doStep();
                 return stepPromise;
             }
-            return Promise.resolve();
+            return Promise.resolve(false);
         };
 
-        (async () => {
-            let stepResolve, stepReject;
-            stepPromise = new Promise((resolve, reject) => {
-                stepResolve = resolve;
-                stepReject  = reject;
-            });
+        let stepResolve, stepReject;
+        stepPromise = new Promise((resolve, reject) => {
+            stepResolve = resolve;
+            stepReject  = reject;
+        });
 
+        let doStepPromise = new Promise(resolve => {
+            doStep = resolve;
+        });
+
+        (async () => {
             try {
                 this.#context.callFunctionByName("main");
 
@@ -88,16 +92,18 @@ export class PulsarScript {
                     this.report(this.#context.getStateReport(this.#callStackDepth, frameReportOptions));
 
                     await Promise.any([
-                        new Promise(resolve => { doStep = resolve; }),
+                        doStepPromise,
                         this.#stopSignal.waitStop(),
                     ]);
 
-                    doStep = undefined;
-                    this.#stopSignal.handleRequest();
+                    doStepPromise = new Promise(resolve => {
+                        doStep = resolve;
+                    });
 
+                    this.#stopSignal.handleRequest();
                     await this.#context.step(this.#stopSignal);
 
-                    stepResolve();
+                    stepResolve(!this.#context.isDone);
                     stepPromise = new Promise((resolve, reject) => {
                         stepResolve = resolve;
                         stepReject  = reject;
@@ -107,13 +113,13 @@ export class PulsarScript {
                 this.report("execution completed");
             } catch (error) {
                 if (this.#stopSignal.isStopping) {
-                    stepResolve();
+                    stepResolve(false);
                 } else {
                     stepReject(error);
                     this.report(this.#context.getErrorReport(error, this.#callStackDepth, frameReportOptions));
                 }
             } finally {
-                doStep = undefined;
+                doStep = stepPromise = stepResolve = stepReject = doStepPromise = undefined;
                 this.#stopSignal.complete();
                 this.#running = false;
             }

@@ -7,7 +7,7 @@ const myConsole = new Console();
 let $report;
 
 let runningScript = null;
-/** @returns {PulsarScript} */
+/** @returns {Promise<PulsarScript>} */
 async function loadNewScript(fileName, buffer) {
     myConsole.clearAll();
     $report.innerText = "";
@@ -52,24 +52,26 @@ window.addEventListener("load", async () => {
     /** @type {HTMLInputElement} */
     const $scriptPicker = document.getElementById("script-picker");
 
-    let debugStep = null;
+    let debugStep;
     /** @type {HTMLInputElement} */
     const $debug = document.getElementById("debug");
     const $debugStep = document.getElementById("debug-step");
     $debugStep.classList.add("collapsed");
     $debugStep.addEventListener("click", () => {
-        if (debugStep != null) debugStep().catch(() => {});
+        if (debugStep != null) {
+            debugStep().catch(console.warn);
+        }
     });
 
     const runScript = async (fileName, buffer) => {
-        debugStep = null;
+        debugStep = undefined;
         const script = await loadNewScript(fileName, buffer);
         if ($debug.checked) {
+            $debugStep.classList.remove("collapsed");
             debugStep = script.runDebug({ linesBefore: 2, linesAfter: 2 });
-            $debugStep.classList.toggle("collapsed", debugStep == null);
         } else {
             $debugStep.classList.add("collapsed");
-            script.run();
+            script.run().catch(console.warn);
         }
     };
 
