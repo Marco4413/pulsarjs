@@ -2,10 +2,19 @@ import { PrintBindings } from "../pulsar/bindings/print.js";
 import { StdIOBindings } from "../pulsar/bindings/stdio.js";
 import { ThreadBindings } from "../pulsar/bindings/thread.js";
 import { TimeBindings } from "../pulsar/bindings/time.js";
+import { findCodeDebugSymbol } from "../pulsar/debug.js";
 import { readNeutronBuffer } from "../pulsar/neutron.js";
 import { ExecutionContext, StopSignal, Value } from "../pulsar/runtime.js";
 
-/** @import { SourceDebugDataOptions } from '../pulsar/debug.js'; */
+/** @import { FrameReportOptions } from '../pulsar/runtime.js'; */
+
+/** @enum {number} */
+export const StepKind = Object.freeze({
+    Instruction: 0,
+    StepOver:    1,
+    StepInto:    2,
+    StepOut:     3,
+});
 
 export class PulsarScript {
     #fileName;
@@ -34,7 +43,7 @@ export class PulsarScript {
 
     /**
      * @throws any runtime error
-     * @param {SourceDebugDataOptions} [frameReportOptions]
+     * @param {FrameReportOptions} [frameReportOptions]
      * @returns 
      */
     async run(frameReportOptions) {
@@ -57,18 +66,54 @@ export class PulsarScript {
         return true;
     }
 
+    #getDebugState() {
+        const callStackLength = this.#context.callStackLength;
+        let codeDebugSymbol;
+        if (this.#context.callStackLength > 0) {
+            const frame = this.#context.currentFrame;
+            codeDebugSymbol = findCodeDebugSymbol(
+                    frame.function.codeDebugSymbols ?? [],
+                    frame.instructionIndex);
+        }
+        return { callStackLength, codeDebugSymbol };
+    }
+
+    #stepRequiresAction(stepKind, prevDebugState, currDebugState) {
+        if (prevDebugState == null || currDebugState == null)
+            return true;
+
+        switch (stepKind) {
+        case StepKind.Instruction: return true;
+        case StepKind.StepInto:
+            if (currDebugState.callStackLength > prevDebugState.callStackLength)
+                return true;
+            // fallthrough
+        case StepKind.StepOver:
+            if (currDebugState.callStackLength > prevDebugState.callStackLength)
+                return false;
+
+            return prevDebugState.codeDebugSymbol == null || currDebugState.codeDebugSymbol == null
+                || prevDebugState.codeDebugSymbol.resolvedSource            !== currDebugState.codeDebugSymbol.resolvedSource
+                || prevDebugState.codeDebugSymbol.token.sourcePosition.line !== currDebugState.codeDebugSymbol.token.sourcePosition.line;
+        case StepKind.StepOut:
+            return currDebugState.callStackLength < prevDebugState.callStackLength;
+        default:
+            throw new Error(`unhandled stepKind ${stepKind}`);
+        }
+    }
+
     /**
-     * @param {SourceDebugDataOptions} [frameReportOptions]
-     * @returns {() => Promise<boolean>} step function, throws runtime errors, returns true if more steps can be taken
+     * @param {FrameReportOptions} [frameReportOptions] if showFullCursor is undefined, it will be automatically changed based on current stepKind
+     * @returns {(stepKind: StepKind|undefined) => Promise<boolean>} step function, throws runtime errors, returns true if more steps can be taken
      */
     runDebug(frameReportOptions) {
         if (this.#running) return null;
         this.#running = true;
 
         let doStep, stepPromise;
-        const step = () => {
+        const step = (stepKind) => {
             if (doStep != null) {
-                doStep();
+                doStep(stepKind);
                 return stepPromise;
             }
             return Promise.resolve(false);
@@ -84,30 +129,52 @@ export class PulsarScript {
             doStep = resolve;
         });
 
+        frameReportOptions ??= {};
+        const autoShowFullCursor = frameReportOptions.showFullCursor == null;
+
         (async () => {
             try {
                 this.#context.callFunctionByName("main");
 
+                let stepKind, prevDebugState;
                 while (!this.#context.isDone) {
-                    this.report(this.#context.getStateReport(this.#callStackDepth, frameReportOptions));
+                    if (stepKind == null) {
+                        this.report(this.#context.getStateReport(this.#callStackDepth, frameReportOptions));
+    
+                        await Promise.any([
+                            doStepPromise.then(requestedStepKind => {
+                                stepKind = requestedStepKind ?? StepKind.Instruction;
+                            }),
+                            this.#stopSignal.waitStop(),
+                        ]);
 
-                    await Promise.any([
-                        doStepPromise,
-                        this.#stopSignal.waitStop(),
-                    ]);
+                        doStepPromise = new Promise(resolve => {
+                            doStep = resolve;
+                        });
 
-                    doStepPromise = new Promise(resolve => {
-                        doStep = resolve;
-                    });
+                        if (stepKind === StepKind.Instruction) {
+                            prevDebugState = undefined;
+                            if (autoShowFullCursor)
+                                frameReportOptions.showFullCursor = true;
+                        } else {
+                            prevDebugState = this.#getDebugState();
+                            if (autoShowFullCursor)
+                                frameReportOptions.showFullCursor = false;
+                        }
+                    }
 
                     this.#stopSignal.handleRequest();
                     await this.#context.step(this.#stopSignal);
 
-                    stepResolve(!this.#context.isDone);
-                    stepPromise = new Promise((resolve, reject) => {
-                        stepResolve = resolve;
-                        stepReject  = reject;
-                    });
+                    if (this.#stepRequiresAction(stepKind, prevDebugState, this.#getDebugState())) {
+                        stepKind = undefined;
+
+                        stepResolve(!this.#context.isDone);
+                        stepPromise = new Promise((resolve, reject) => {
+                            stepResolve = resolve;
+                            stepReject  = reject;
+                        });
+                    }
                 }
 
                 this.report("execution completed");

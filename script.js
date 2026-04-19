@@ -1,5 +1,5 @@
 import { Console } from "./utils/console.js";
-import { PulsarScript } from "./utils/pulsarScript.js";
+import { PulsarScript, StepKind } from "./utils/pulsarScript.js";
 
 const myConsole = new Console();
 
@@ -55,22 +55,32 @@ window.addEventListener("load", async () => {
     let debugStep;
     /** @type {HTMLInputElement} */
     const $debug = document.getElementById("debug");
-    const $debugStep = document.getElementById("debug-step");
-    $debugStep.classList.add("collapsed");
-    $debugStep.addEventListener("click", () => {
-        if (debugStep != null) {
-            debugStep().catch(console.warn);
-        }
-    });
+
+    const $stepButtons = document.getElementById("step-buttons");
+    $stepButtons.classList.add("collapsed");
+
+    const attachStepFunction = (elementId, stepKind) => {
+        const $step = document.getElementById(elementId);
+        $step.addEventListener("click", () => {
+            if (debugStep != null) {
+                debugStep(stepKind).catch(console.warn);
+            }
+        });
+    };
+
+    attachStepFunction("debug-step",      StepKind.Instruction);
+    attachStepFunction("debug-step-over", StepKind.StepOver);
+    attachStepFunction("debug-step-into", StepKind.StepInto);
+    attachStepFunction("debug-step-out",  StepKind.StepOut);
 
     const runScript = async (fileName, buffer) => {
         debugStep = undefined;
         const script = await loadNewScript(fileName, buffer);
         if ($debug.checked) {
-            $debugStep.classList.remove("collapsed");
+            $stepButtons.classList.remove("collapsed");
             debugStep = script.runDebug({ linesBefore: 2, linesAfter: 2 });
         } else {
-            $debugStep.classList.add("collapsed");
+            $stepButtons.classList.add("collapsed");
             script.run().catch(console.warn);
         }
     };

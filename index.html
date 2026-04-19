@@ -33,7 +33,13 @@
     <div>
         <input type="checkbox" id="debug">
         <label for="debug">Debug</label>
-        <button id="debug-step">Step Instruction</button>
+        <span id="step-buttons">
+            <span>| Step&colon;</span>
+            <button id="debug-step">Instruction</button>
+            <button id="debug-step-over">Over</button>
+            <button id="debug-step-into">Into</button>
+            <button id="debug-step-out">Out</button>
+        </span>
     </div>
     <pre id="report"></pre>
 </body>
