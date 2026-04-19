@@ -509,21 +509,31 @@ export class Module {
  */
 
 /**
+ * @typedef {object} _FrameReportOptions
+ * @property {boolean} [showFullCursor] true by default
+ *
+ * @typedef {SourceDebugDataOptions|_FrameReportOptions} FrameReportOptions
+ */
+
+/**
  * @param {Frame} frame
- * @param {SourceDebugDataOptions} [options]
+ * @param {FrameReportOptions} [options]
  * @returns {string}
  */
 export function getFrameReport(frame, options) {
+    const showFullCursor = options?.showFullCursor ?? true;
     /** @param {SourceDebugData} debugData */
     function getFullViewWithPositionTag(debugData) {
-        const positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} |`;
+        const positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} ${showFullCursor ? "|" : ">"}`;
         const emptyTag    = "|".padStart(positionTag.length);
 
         let viewWithTag = "";
         for (const view of debugData.view) {
             if (view.line === debugData.sourcePosition.line) {
                 viewWithTag += `${positionTag} ${view.text}\n`;
-                viewWithTag += `${emptyTag} ${debugData.cursor}\n`;
+                if (showFullCursor) {
+                    viewWithTag += `${emptyTag} ${debugData.cursor}\n`;
+                }
             } else {
                 viewWithTag += `${emptyTag} ${view.text}\n`;
             }
@@ -900,7 +910,7 @@ export class ExecutionContext {
 
     /**
      * @param {number} [callStackDepth]
-     * @param {SourceDebugDataOptions} [frameReportOptions]
+     * @param {FrameReportOptions} [frameReportOptions]
      * @returns {string}
      */
     getStateReport(callStackDepth, frameReportOptions) {
@@ -914,7 +924,7 @@ export class ExecutionContext {
     /**
      * @param {Error} error
      * @param {number} [callStackDepth]
-     * @param {SourceDebugDataOptions} [frameReportOptions]
+     * @param {FrameReportOptions} [frameReportOptions]
      * @returns {string}
      */
     getErrorReport(error, callStackDepth, frameReportOptions) {
