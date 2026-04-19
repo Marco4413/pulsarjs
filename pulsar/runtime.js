@@ -804,6 +804,8 @@ export class ExecutionContext {
     get currentStack() { return this.#callStack.length > 0 ? this.currentFrame.stack : this.#stack; }
     get currentFrame() { return this.#callStack[this.#callStack.length-1]; }
 
+    get callStackLength() { return this.#callStack.length; }
+
     get isDone() { return this.#callStack.length <= 0; }
 
     /**
