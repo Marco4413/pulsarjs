@@ -124,14 +124,11 @@ export function getFunctionSourceDebugData(functionDebugSymbol, options) {
 }
 
 /**
- * @param {BlockDebugSymbol[]} [codeDebugSymbols]
+ * @param {BlockDebugSymbol[]} codeDebugSymbols
  * @param {number} instructionIndex
- * @param {SourceDebugDataOptions} [options]
- * @returns {SourceDebugData|undefined}
+ * @returns {BlockDebugSymbol|undefined}
  */
-export function getCodeSourceDebugData(codeDebugSymbols, instructionIndex, options) {
-    if (codeDebugSymbols == null)
-        return undefined;
+export function findCodeDebugSymbol(codeDebugSymbols, instructionIndex) {
     // TODO: codeDebugSymbols is sorted by the definition of the format,
     //  we could apply a binary search to speed things up
     let debugSymbol;
@@ -140,6 +137,19 @@ export function getCodeSourceDebugData(codeDebugSymbols, instructionIndex, optio
             debugSymbol = blockDebugSymbol;
         else break;
     }
+    return debugSymbol;
+}
+
+/**
+ * @param {BlockDebugSymbol[]} [codeDebugSymbols]
+ * @param {number} instructionIndex
+ * @param {CodeSourceDebugDataOptions} [options]
+ * @returns {SourceDebugData|undefined}
+ */
+export function getCodeSourceDebugData(codeDebugSymbols, instructionIndex, options) {
+    if (codeDebugSymbols == null)
+        return undefined;
+    const debugSymbol = findCodeDebugSymbol(codeDebugSymbols, instructionIndex);
     if (debugSymbol == null || debugSymbol.resolvedSource == null)
         return undefined;
     return getSourceDebugData(debugSymbol.resolvedSource, debugSymbol.token.sourcePosition, options);
