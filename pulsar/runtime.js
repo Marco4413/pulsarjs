@@ -524,8 +524,13 @@ export function getFrameReport(frame, options) {
     const showFullCursor = options?.showFullCursor ?? true;
     /** @param {SourceDebugData} debugData */
     function getFullViewWithPositionTag(debugData) {
-        const positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} ${showFullCursor ? "|" : ">"}`;
-        const emptyTag    = "|".padStart(positionTag.length);
+        let positionTag;
+        if (showFullCursor) {
+            positionTag = `${debugData.sourcePosition.line+1}:${debugData.sourcePosition.char+1} |`;
+        } else {
+            positionTag = `${debugData.sourcePosition.line+1} >`;
+        }
+        const emptyTag  = "|".padStart(positionTag.length);
 
         let viewWithTag = "";
         for (const view of debugData.view) {
