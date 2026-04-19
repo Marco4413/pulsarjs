@@ -7,6 +7,7 @@ import { getFunctionSourceDebugData, getCodeSourceDebugData } from "./debug.js";
  *     GlobalDebugSymbol,
  *     SourceDebugSymbol,
  *     SourceDebugData,
+ *     SourceDebugDataOptions,
  * } from './debug.js';
  */
 
@@ -509,7 +510,7 @@ export class Module {
 
 /**
  * @param {Frame} frame
- * @param {SourceDebugData} [options]
+ * @param {SourceDebugDataOptions} [options]
  * @returns {string}
  */
 export function getFrameReport(frame, options) {
@@ -899,7 +900,7 @@ export class ExecutionContext {
 
     /**
      * @param {number} [callStackDepth]
-     * @param {SourceDebugData} [frameReportOptions]
+     * @param {SourceDebugDataOptions} [frameReportOptions]
      * @returns {string}
      */
     getStateReport(callStackDepth, frameReportOptions) {
@@ -913,7 +914,7 @@ export class ExecutionContext {
     /**
      * @param {Error} error
      * @param {number} [callStackDepth]
-     * @param {SourceDebugData} [frameReportOptions]
+     * @param {SourceDebugDataOptions} [frameReportOptions]
      * @returns {string}
      */
     getErrorReport(error, callStackDepth, frameReportOptions) {
