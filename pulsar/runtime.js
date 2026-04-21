@@ -511,6 +511,7 @@ export class Module {
 /**
  * @typedef {object} _FrameReportOptions
  * @property {boolean} [showFullCursor] true by default
+ * @property {number} [instructionIndexOffset] 0 by default
  *
  * @typedef {SourceDebugDataOptions|_FrameReportOptions} FrameReportOptions
  */
@@ -521,7 +522,8 @@ export class Module {
  * @returns {string}
  */
 export function getFrameReport(frame, options) {
-    const showFullCursor = options?.showFullCursor ?? true;
+    const showFullCursor         = options?.showFullCursor         ?? true;
+    const instructionIndexOffset = options?.instructionIndexOffset ?? 0;
     /** @param {SourceDebugData} debugData */
     function getFullViewWithPositionTag(debugData) {
         let positionTag;
@@ -557,7 +559,8 @@ export function getFrameReport(frame, options) {
         report += ` '${debugData.path}'\ndefined at:\n${getFullViewWithPositionTag(debugData)}`;
     }
 
-    debugData = getCodeSourceDebugData(frame.function.codeDebugSymbols, frame.instructionIndex, options);
+    let instructionIndex = frame.instructionIndex + instructionIndexOffset;
+    debugData = getCodeSourceDebugData(frame.function.codeDebugSymbols, instructionIndex, options);
     if (debugData != null && debugData.view.length > 0) {
         report += `\nduring execution of:\n${getFullViewWithPositionTag(debugData)}`;
     }
