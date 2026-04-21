@@ -1036,7 +1036,9 @@ export class ExecutionContext {
         const calleeFrame = this.currentFrame;
         if (calleeFrame.function.code != null && calleeFrame.instructionIndex < calleeFrame.function.code.length) {
             await this.#executeInstruction(calleeFrame);
-            return;
+            if (calleeFrame.instructionIndex < calleeFrame.function.code.length)
+                return;
+            // perform return as soon as possible
         }
 
         if (calleeFrame.stack.length < calleeFrame.function.returns)
