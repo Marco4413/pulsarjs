@@ -66,14 +66,14 @@ export class PulsarScript {
         return true;
     }
 
-    #getDebugState() {
+    #getDebugState(instructionIndexOffset) {
         const callStackLength = this.#context.callStackLength;
         let codeDebugSymbol;
         if (this.#context.callStackLength > 0) {
             const frame = this.#context.currentFrame;
             codeDebugSymbol = findCodeDebugSymbol(
                     frame.function.codeDebugSymbols ?? [],
-                    frame.instructionIndex);
+                    frame.instructionIndex+instructionIndexOffset);
         }
         return { callStackLength, codeDebugSymbol };
     }
@@ -103,7 +103,7 @@ export class PulsarScript {
     }
 
     /**
-     * @param {FrameReportOptions} [frameReportOptions] if showFullCursor is undefined, it will be automatically changed based on current stepKind
+     * @param {FrameReportOptions} [frameReportOptions] showFullCursor and instructionIndexOffset are ignored
      * @returns {(stepKind: StepKind|undefined) => Promise<boolean>} step function, throws runtime errors, returns true if more steps can be taken
      */
     runDebug(frameReportOptions) {
@@ -129,8 +129,9 @@ export class PulsarScript {
             doStep = resolve;
         });
 
-        frameReportOptions ??= {};
-        const autoShowFullCursor = frameReportOptions.showFullCursor == null;
+        frameReportOptions = { ...(frameReportOptions ?? {}) };
+        frameReportOptions.showFullCursor = true;
+        frameReportOptions.instructionIndexOffset = 1;
 
         (async () => {
             try {
@@ -154,19 +155,17 @@ export class PulsarScript {
 
                         if (stepKind === StepKind.Instruction) {
                             prevDebugState = undefined;
-                            if (autoShowFullCursor)
-                                frameReportOptions.showFullCursor = true;
+                            frameReportOptions.showFullCursor = true;
                         } else {
-                            prevDebugState = this.#getDebugState();
-                            if (autoShowFullCursor)
-                                frameReportOptions.showFullCursor = false;
+                            prevDebugState = this.#getDebugState(frameReportOptions.instructionIndexOffset);
+                            frameReportOptions.showFullCursor = false;
                         }
                     }
 
                     this.#stopSignal.handleRequest();
                     await this.#context.step(this.#stopSignal);
 
-                    if (this.#stepRequiresAction(stepKind, prevDebugState, this.#getDebugState())) {
+                    if (this.#stepRequiresAction(stepKind, prevDebugState, this.#getDebugState(frameReportOptions.instructionIndexOffset))) {
                         stepKind = undefined;
 
                         stepResolve(!this.#context.isDone);
@@ -183,6 +182,8 @@ export class PulsarScript {
                     stepResolve(false);
                 } else {
                     stepReject(error);
+                    frameReportOptions.showFullCursor = true;
+                    frameReportOptions.instructionIndexOffset = 0;
                     this.report(this.#context.getErrorReport(error, this.#callStackDepth, frameReportOptions));
                 }
             } finally {
