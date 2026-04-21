@@ -166,9 +166,35 @@ export class Console {
         const $stdin  = this.#stdin.$element;
         $stdin.insertBefore($clearAll, $stdin.firstChild);
 
+        const $resizeBar = document.createElement("div");
+        $resizeBar.classList.add("resize-bar");
+
+        let capturedPointerId;
+        $resizeBar.addEventListener("pointerdown", ev => {
+            if (capturedPointerId == null) {
+                capturedPointerId = ev.pointerId;
+                ev.target.setPointerCapture(capturedPointerId);
+                $resizeBar.classList.add("resize-bar-drag");
+            }
+        });
+        $resizeBar.addEventListener("pointerup", ev => {
+            if (ev.pointerId === capturedPointerId) {
+                ev.target.releasePointerCapture(capturedPointerId);
+                capturedPointerId = undefined;
+                $resizeBar.classList.remove("resize-bar-drag");
+            }
+        });
+        $resizeBar.addEventListener("pointermove", ev => {
+            if (ev.pointerId === capturedPointerId) {
+                const newHeight = $stdout.clientHeight + ev.offsetY;
+                $stdout.style.height = `${newHeight}px`;
+            }
+        });
+
         const $console = document.createElement("div");
         $console.classList.add("console");
         $console.appendChild($stdout);
+        $console.appendChild($resizeBar);
         $console.appendChild($stdin);
         this.#$element = $console;
     }
