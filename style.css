@@ -34,6 +34,7 @@ div {
 }
 
 .stdin {
+    min-width: 4em;
     flex-grow: 1;
 }
 
@@ -68,4 +69,49 @@ div {
 
 #report {
     white-space: pre-wrap;
+}
+
+.raylib-closed {
+    display: none;
+}
+
+.raylib-window {
+    min-width: 10em;
+    max-width: fit-content;
+    padding: 0.5em;
+    border: 1px solid var(--background-color-dark);
+    border-radius: 0.5em;
+    background-color: var(--background-color-dark);
+}
+
+.raylib-window > * {
+    margin: 0px;
+}
+
+.raylib-window.raylib-focus {
+    border: 1px solid var(--background-color-light);
+}
+
+.raylib-title {
+    padding: 0px 0.5em 0.5em 1.5em;
+    color: var(--text-color-light);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.raylib-window.raylib-focus .raylib-title {
+    font-weight: bold;
+}
+
+.raylib-screen-slot {
+    padding: 0px;
+    background-color: black;
+}
+
+.raylib-screen {
+    display: block;
+    margin: 0px;
+    padding: 0px;
+    max-width: 100%;
 }

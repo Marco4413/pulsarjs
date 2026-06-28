@@ -2,11 +2,56 @@ import { PrintBindings } from "../pulsar/bindings/print.js";
 import { StdIOBindings } from "../pulsar/bindings/stdio.js";
 import { ThreadBindings } from "../pulsar/bindings/thread.js";
 import { TimeBindings } from "../pulsar/bindings/time.js";
+import { RaylibBindings } from "../pulsar/bindings/raylib.js";
 import { findCodeDebugSymbol } from "../pulsar/debug.js";
 import { readNeutronBuffer } from "../pulsar/neutron.js";
 import { ExecutionContext, StopSignal, Value } from "../pulsar/runtime.js";
 
 /** @import { FrameReportOptions } from '../pulsar/runtime.js'; */
+/** @import { ClickEvent, KeyboardEvent } from '../pulsar/binding.js'; */
+
+export class ScriptHooks {
+    /** @type {HTMLElement[]} */
+    #windows;
+    #keyDownListeners;
+    #keyUpListeners;
+    #clickListeners;
+
+    constructor() {
+        this.#windows          = [];
+        this.#keyDownListeners = [];
+        this.#keyUpListeners   = [];
+        this.#clickListeners   = [];
+    }
+
+    get windows() { return this.#windows.values(); }
+
+    /** @param {KeyboardEvent} evt */
+    async sendKeyDown(evt) { await this.#dispatch(this.#keyDownListeners, evt); }
+    /** @param {KeyboardEvent} evt */
+    async sendKeyUp(evt)   { await this.#dispatch(this.#keyUpListeners, evt); }
+    /** @param {ClickEvent} evt */
+    async sendClick(evt)   { await this.#dispatch(this.#clickListeners, evt); }
+
+    /** @param {HTMLElement} $window */
+    addWindow($window)  { this.#windows.push($window); }
+    /** @param {(evt: KeyboardEvent) => Promise<void>|void} listener */
+    onKeyDown(listener) { this.#keyDownListeners.push(listener); }
+    /** @param {(evt: KeyboardEvent) => Promise<void>|void} listener */
+    onKeyUp(listener)   { this.#keyUpListeners.push(listener); }
+    /** @param {(evt: ClickEvent) => Promise<void>|void} listener */
+    onClick(listener)   { this.#clickListeners.push(listener); }
+
+    async #dispatch(listeners, evt) {
+        for (const listener of listeners) {
+            try {
+                await listener(evt);
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    }
+}
 
 /** @enum {number} */
 export const StepKind = Object.freeze({
@@ -20,6 +65,7 @@ export class PulsarScript {
     #fileName;
     #module;
     #bindings;
+    #hooks;
     #context;
     #running;
 
@@ -31,10 +77,13 @@ export class PulsarScript {
     /** @throws any load error */
     constructor(fileName, buffer) {
         this.#load(fileName, buffer);
+        this.#hooks = new ScriptHooks();
         this.#stopSignal      = new StopSignal();
         this.#reportListeners = [];
         this.#callStackDepth  = 5;
     }
+
+    get hooks() { return this.#hooks; }
 
     async stop() {
         await this.#stopSignal.stop();
@@ -44,7 +93,7 @@ export class PulsarScript {
     /**
      * @throws any runtime error
      * @param {FrameReportOptions} [frameReportOptions]
-     * @returns 
+     * @returns {Promise<boolean>}
      */
     async run(frameReportOptions) {
         if (this.#running) return false;
@@ -141,7 +190,7 @@ export class PulsarScript {
                 while (!this.#context.isDone) {
                     if (stepKind == null) {
                         this.report(this.#context.getStateReport(this.#callStackDepth, frameReportOptions));
-    
+
                         await Promise.any([
                             doStepPromise.then(requestedStepKind => {
                                 stepKind = requestedStepKind ?? StepKind.Instruction;
@@ -205,17 +254,25 @@ export class PulsarScript {
     }
 
     bindNatives(consoleWrite, consoleRead) {
-        if (this.#bindings != null) return;
+        if (this.#bindings != null) return this.#hooks;
+        const raylibBindings = new RaylibBindings(this.#module);
         this.#bindings = [
             new PrintBindings(this.#module, consoleWrite),
             new StdIOBindings(this.#module, consoleRead, consoleWrite),
             new ThreadBindings(this.#module),
             new TimeBindings(this.#module),
+            raylibBindings,
         ];
-    
+
         for (const binding of this.#bindings) {
             binding.bind();
         }
+
+        this.#hooks.addWindow(raylibBindings.$window);
+        this.#hooks.onKeyDown(evt => raylibBindings.receiveKeyDown(evt));
+        this.#hooks.onKeyUp(evt => raylibBindings.receiveKeyUp(evt));
+        this.#hooks.onClick(evt => raylibBindings.receiveClick(evt));
+        return this.#hooks;
     }
 
     #load(fileName, buffer) {

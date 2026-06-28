@@ -22,22 +22,32 @@ async function loadNewScript(fileName, buffer) {
         }
     }
 
+    const $windows = document.getElementById("windows");
+    $windows.innerHTML = "";
+
     try {
         runningScript = new PulsarScript(fileName, buffer);
-        runningScript.bindNatives(
+        const scriptHooks = runningScript.bindNatives(
                 (...data)    => myConsole.write(...data),
                 (stopSignal) => myConsole.read(stopSignal));
         runningScript.onReport(message => {
             $report.innerText = message;
         });
+
+        $windows.append(...scriptHooks.windows);
     } catch (error) {
         $report.innerText = `${error.constructor.name}: ${error.message}`;
+        runningScript = null;
     }
 
     return runningScript;
 }
 
 window.addEventListener("load", async () => {
+    window.addEventListener("keydown", async ev => await runningScript?.hooks?.sendKeyDown(ev));
+    window.addEventListener("keyup",   async ev => await runningScript?.hooks?.sendKeyUp(ev));
+    window.addEventListener("click",   async ev => await runningScript?.hooks?.sendClick(ev));
+
     const $console = document.getElementById("console");
     $console.replaceWith(myConsole.$element);
 
