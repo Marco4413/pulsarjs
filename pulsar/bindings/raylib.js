@@ -69,24 +69,33 @@ export class RaylibBindings extends Binding {
     #keysDownN;
 
     #windowFocus;
+    #windowMinimized;
+    #windowCloseRequest;
 
     /** @param {Module} module */
     constructor(module) {
         super(module);
         const $window     = document.createElement("div");
+        const $titleBar   = document.createElement("div");
         const $title      = document.createElement("p");
+        const $minimize   = document.createElement("div");
+        const $close      = document.createElement("div");
         const $screenSlot = document.createElement("div");
         const $screen     = document.createElement("canvas");
 
-        $window.classList.add("raylib-closed");
-        $window.classList.add("raylib-window");
+        $window.classList.add("raylib-window", "raylib-closed");
+        $titleBar.classList.add("raylib-title-bar");
         $title.classList.add("raylib-title");
+        $minimize.classList.add("raylib-button", "raylib-window-minimize");
+        $close.classList.add("raylib-button", "raylib-window-close");
         $screenSlot.classList.add("raylib-screen-slot");
         $screen.classList.add("raylib-screen");
 
         $screenSlot.appendChild($screen);
-
-        $window.appendChild($title);
+        $titleBar.appendChild($title);
+        $titleBar.appendChild($minimize);
+        $titleBar.appendChild($close);
+        $window.appendChild($titleBar);
         $window.appendChild($screenSlot);
 
         this.#$screen = $screen;
@@ -105,10 +114,16 @@ export class RaylibBindings extends Binding {
         this.#keysDownN = new Set();
 
         this.#windowFocus = false;
+        this.#windowMinimized = false;
+        this.#windowCloseRequest = false;
+
+        $minimize.addEventListener("click", () => this.setWindowMinimized(!this.windowMinimized));
+        $close.addEventListener("click", () => this.requestWindowClose());
     }
 
-    get $window() { return this.#$window; }
-    get windowFocus() { return this.#windowFocus; }
+    get $window()         { return this.#$window;         }
+    get windowFocus()     { return this.#windowFocus;     }
+    get windowMinimized() { return this.#windowMinimized; }
 
     /** @param {KeyboardEvent} evt */
     receiveKeyDown(evt) {
@@ -144,6 +159,16 @@ export class RaylibBindings extends Binding {
     setWindowFocus(focus) {
         this.#$window.classList.toggle("raylib-focus", focus);
         this.#windowFocus = focus;
+    }
+
+    /** @param {boolean} minimize */
+    setWindowMinimized(minimize) {
+        this.#$window.classList.toggle("raylib-minimized", minimize);
+        this.#windowMinimized = minimize;
+    }
+
+    requestWindowClose() {
+        this.#windowCloseRequest = true;
     }
 
     bind() {
@@ -196,6 +221,8 @@ export class RaylibBindings extends Binding {
         if (!title.isString())   throw new ValueTypeError(`expected String for title, got ${valueTypeToString(title.type)}`);
 
         this.#$window.classList.remove("raylib-closed");
+        this.#windowCloseRequest = false;
+
         this.#renderContext.canvas.width  = Number(width.value);
         this.#renderContext.canvas.height = Number(height.value);
         this.#$title.innerText = title.value;
@@ -216,7 +243,8 @@ export class RaylibBindings extends Binding {
 
     /** @param {ExecutionContext} context */
     #windowShouldClose(context) {
-        context.currentFrame.stack.push(Value.fromInteger(this.#isKeyPressedImpl("escape") ? 1 : 0));
+        const shouldClose = this.#isKeyPressedImpl("escape") || this.#windowCloseRequest;
+        context.currentFrame.stack.push(Value.fromInteger(shouldClose ? 1 : 0));
     }
 
     /** @param {ExecutionContext} context */
@@ -230,7 +258,7 @@ export class RaylibBindings extends Binding {
             this.#lastFrameTime = timeNow();
         }
 
-        if (this.windowFocus) {
+        if (this.windowFocus && !this.windowMinimized) {
             this.#keysDown1 = this.#keysDown2;
             this.#keysDown2 = this.#keysDownN;
             this.#keysDownN = new Set(this.#keysDownN.keys());
@@ -306,6 +334,11 @@ export class RaylibBindings extends Binding {
     async #endDrawing(context) {
         const framePromise = new Promise((resolve, reject) => {
             requestAnimationFrame(() => {
+                if (this.windowMinimized) {
+                    resolve();
+                    return;
+                }
+
                 try {
                     const $screen = this.#screenContext.canvas;
                     const $render = this.#renderContext.canvas;

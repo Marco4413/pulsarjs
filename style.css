@@ -24,8 +24,8 @@ div {
 }
 
 .stdout > * {
-    margin: 0px;
-    padding: 0px;
+    margin: 0;
+    padding: 0;
 }
 
 .stdin-container {
@@ -84,16 +84,31 @@ div {
     background-color: var(--background-color-dark);
 }
 
-.raylib-window > * {
-    margin: 0px;
-}
-
 .raylib-window.raylib-focus {
     border: 1px solid var(--background-color-light);
 }
 
+.raylib-title-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    flex-direction: row;
+
+    margin: 0;
+    margin-bottom: 0.5em;
+    padding: 0;
+    padding-left: 1.5em;
+
+    align-items: center;
+}
+
+.raylib-window.raylib-minimized .raylib-title-bar {
+    margin-bottom: 0;
+}
+
 .raylib-title {
-    padding: 0px 0.5em 0.5em 1.5em;
+    flex-grow: 1;
+    margin: 0;
+    padding: 0;
     color: var(--text-color-light);
     overflow: hidden;
     white-space: nowrap;
@@ -104,14 +119,50 @@ div {
     font-weight: bold;
 }
 
+.raylib-button {
+    user-select: none;
+
+    width: 1.5em;
+    height: 1.5em;
+    margin: 0.1em;
+
+    border: 1px solid var(--background-color-light);
+    border-radius: 25%;
+
+    text-align: center;
+    background-color: var(--background-color-dark);
+}
+
+.raylib-button:hover {
+    background-color: var(--hover-color-light);
+}
+
+.raylib-button:active {
+    background-color: var(--press-color-light);
+}
+
+.raylib-window-minimize::before {
+    content: '_';
+}
+
+.raylib-window-close::before {
+    content: 'x';
+}
+
 .raylib-screen-slot {
-    padding: 0px;
+    margin: 0;
+    padding: 0;
     background-color: black;
+}
+
+.raylib-window.raylib-minimized .raylib-screen-slot {
+    visibility: collapse;
+    height: 0;
 }
 
 .raylib-screen {
     display: block;
-    margin: 0px;
-    padding: 0px;
+    margin: 0;
+    padding: 0;
     max-width: 100%;
 }
