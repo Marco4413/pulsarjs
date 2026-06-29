@@ -44,6 +44,11 @@ const KEY_MAP = new Map([
     [ "shift", 340 ], [ "control", 341 ], [ "alt", 342 ],
 ]);
 
+/** the precision of `timeNow()` */
+const TIME_EPSILON = 1;
+/** monotonic clock, returns time in ms */
+const timeNow = () => performance.now();
+
 export class RaylibBindings extends Binding {
     #$window;
     #$title;
@@ -92,8 +97,8 @@ export class RaylibBindings extends Binding {
         const renderCanvas   = new OffscreenCanvas(0, 0);
         this.#renderContext  = renderCanvas.getContext("2d");
         this.#lastFrameTime  = null;
-        this.#nextFrameDelta = 0;
-        this.#deltaTime      = 0.016;
+        this.#nextFrameDelta = TIME_EPSILON;
+        this.#deltaTime      = TIME_EPSILON * 0.001;
 
         this.#keysDown1 = new Set();
         this.#keysDown2 = new Set();
@@ -201,7 +206,7 @@ export class RaylibBindings extends Binding {
         const frame = context.currentFrame;
         const [ fps ] = frame.locals;
         if (!fps.isInteger())  throw new ValueTypeError(`expected Integer for fps, got ${valueTypeToString(fps.type)}`);
-        this.#nextFrameDelta = Math.floor(1000 / Number(fps.value));
+        this.#nextFrameDelta = Math.max(TIME_EPSILON, Math.floor(1000 / Number(fps.value)));
     }
 
     /** @param {ExecutionContext} context */
@@ -222,7 +227,7 @@ export class RaylibBindings extends Binding {
     /** @param {ExecutionContext} context */
     #beginDrawing(context) {
         if (this.#lastFrameTime == null) {
-            this.#lastFrameTime = performance.now();
+            this.#lastFrameTime = timeNow();
         }
 
         if (this.windowFocus) {
@@ -321,13 +326,7 @@ export class RaylibBindings extends Binding {
         ]);
         stopSignal.handleRequest();
 
-        const thisFrameTime = performance.now();
-        const deltaTime     = thisFrameTime - this.#lastFrameTime;
-        this.#lastFrameTime = thisFrameTime;
-
-        this.#deltaTime = deltaTime * 0.001;
-
-        const syncTime = this.#nextFrameDelta - deltaTime;
+        const syncTime = (this.#lastFrameTime + this.#nextFrameDelta) - timeNow();
         if (syncTime > 0) {
             await Promise.any([
                 new Promise(res => setTimeout(res, syncTime)),
@@ -335,6 +334,12 @@ export class RaylibBindings extends Binding {
             ]);
             stopSignal.handleRequest();
         }
+
+        const thisFrameTime = timeNow();
+        const deltaTime     = thisFrameTime - this.#lastFrameTime;
+        this.#lastFrameTime = thisFrameTime;
+
+        this.#deltaTime = deltaTime * 0.001;
     }
 
     /**
