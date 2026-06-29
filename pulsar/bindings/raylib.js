@@ -352,21 +352,15 @@ export class RaylibBindings extends Binding {
             });
         });
 
+        const syncTime = (this.#lastFrameTime + this.#nextFrameDelta) - timeNow();
+        const syncPromise = syncTime > 0 ? new Promise(res => setTimeout(res, syncTime)) : null;
+
         const stopSignal = context.stopSignal;
         await Promise.any([
-            framePromise,
+            Promise.all([ framePromise, syncPromise ]),
             stopSignal.waitStop()
         ]);
         stopSignal.handleRequest();
-
-        const syncTime = (this.#lastFrameTime + this.#nextFrameDelta) - timeNow();
-        if (syncTime > 0) {
-            await Promise.any([
-                new Promise(res => setTimeout(res, syncTime)),
-                stopSignal.waitStop()
-            ]);
-            stopSignal.handleRequest();
-        }
 
         const thisFrameTime = timeNow();
         const deltaTime     = thisFrameTime - this.#lastFrameTime;
