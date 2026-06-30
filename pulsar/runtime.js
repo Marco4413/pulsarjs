@@ -11,6 +11,24 @@ import { getFunctionSourceDebugData, getCodeSourceDebugData } from "./debug.js";
  * } from './debug.js';
  */
 
+/**
+ * options for async execution.
+ * a frame is the work done before explicitly giving control back to the browser
+ * @typedef {object} RunAsyncOptions
+ * @property {number} [frameSteps] (> 0) steps taken by each frame
+ * @property {number} [frameTime] (>= 0) time dedicated to each frame
+ * @property {boolean} [debugFrameStats] debug log stats about frames
+ */
+
+/**
+ * @throws {RangeError}
+ * @param {RunAsyncOptions} opt
+ */
+export function checkRunAsyncOptions(opt) {
+    if (opt.frameSteps != null && opt.frameSteps <= 0) throw new RangeError(`RunAsyncOptions.frameSteps must be > 0, got ${opt.frameSteps}`);
+    if (opt.frameTime != null && opt.frameTime < 0) throw new RangeError(`RunAsyncOptions.frameTime must be >= 0, got ${opt.frameTime}`);
+}
+
 /** @enum {number} */
 export const ValueType = Object.freeze({
     Void:                    0x00,
@@ -992,25 +1010,43 @@ export class ExecutionContext {
      * runs the context asynchronously so that the browser may tick during execution
      * @throws any runtime error
      * @param {StopSignal} [stopSignal]
-     * @param {number} [stepsPerFrame] steps to take before giving control back to the browser. must be > 0
+     * @param {RunAsyncOptions} [opt] defaults to `{ frameSteps: 2048 }`
      */
-    async runAsync(stopSignal, stepsPerFrame=2048) {
-        if (stepsPerFrame <= 0)
-            throw new RangeError(`stepsPerFrame must be > 0, got ${stepsPerFrame}`);
+    async runAsync(stopSignal, opt) {
+        opt = opt ?? { frameSteps: 2048 };
+        checkRunAsyncOptions(opt);
 
         if (this.#stopSignal != null) return;
         this.#setStopSignal(stopSignal);
 
         try {
+            let lastFrame = performance.now();
             let frameStep = 0;
+            const endFrame = async () => {
+                if (opt.debugFrameStats) {
+                    console.debug(`[FRAME STATS]: steps ${frameStep}, time ${performance.now() - lastFrame}`);
+                }
+                await new Promise(res => setTimeout(res));
+                lastFrame = performance.now();
+                frameStep = 0;
+            };
+
             while (!this.isDone) {
                 await this.#step();
                 this.#stopSignal.handleRequest();
-
                 ++frameStep;
-                if (frameStep >= stepsPerFrame) {
-                    await new Promise(res => setTimeout(res));
-                    frameStep = 0;
+
+                if (opt.frameSteps != null) {
+                    if (frameStep >= opt.frameSteps) {
+                        await endFrame();
+                    }
+                }
+
+                if (opt.frameTime != null) {
+                    const thisFrame = performance.now();
+                    if (thisFrame - lastFrame >= opt.frameTime) {
+                        await endFrame();
+                    }
                 }
             }
         } finally {
