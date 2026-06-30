@@ -91,7 +91,7 @@ window.addEventListener("load", async () => {
             debugStep = script.runDebug({ linesBefore: 2, linesAfter: 2 });
         } else {
             $stepButtons.classList.add("collapsed");
-            script.run().catch(console.warn);
+            script.run(undefined, { frameTime: 250 }).catch(console.warn);
         }
     };
 

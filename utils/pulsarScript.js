@@ -7,7 +7,7 @@ import { findCodeDebugSymbol } from "../pulsar/debug.js";
 import { readNeutronBuffer } from "../pulsar/neutron.js";
 import { ExecutionContext, StopSignal, Value } from "../pulsar/runtime.js";
 
-/** @import { FrameReportOptions } from '../pulsar/runtime.js'; */
+/** @import { FrameReportOptions, RunAsyncOptions } from '../pulsar/runtime.js'; */
 /** @import { ClickEvent, KeyboardEvent } from '../pulsar/binding.js'; */
 
 export class ScriptHooks {
@@ -93,16 +93,17 @@ export class PulsarScript {
     /**
      * @throws any runtime error
      * @param {FrameReportOptions} [frameReportOptions]
+     * @param {RunAsyncOptions} [runAsyncOptions]
      * @returns {Promise<boolean>}
      */
-    async run(frameReportOptions) {
+    async run(frameReportOptions, runAsyncOptions) {
         if (this.#running) return false;
         this.#running = true;
         this.#stopSignal = new StopSignal();
 
         try {
             this.#context.callFunctionByName("main");
-            await this.#context.runAsync(this.#stopSignal);
+            await this.#context.runAsync(this.#stopSignal, runAsyncOptions);
         } catch (error) {
             if (!this.#stopSignal.isStopping) {
                 this.report(this.#context.getErrorReport(error, this.#callStackDepth, frameReportOptions));
