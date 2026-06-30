@@ -59,6 +59,7 @@ export class RaylibBindings extends Binding {
 
     #lastFrameTime;
     #nextFrameDelta;
+    #syncPromise;
     #deltaTime;
 
     /** @type {Set<number>} */
@@ -107,6 +108,7 @@ export class RaylibBindings extends Binding {
         this.#renderContext  = renderCanvas.getContext("2d");
         this.#lastFrameTime  = null;
         this.#nextFrameDelta = TIME_EPSILON;
+        this.#syncPromise    = new Promise(resolve => setTimeout(resolve, this.#nextFrameDelta));
         this.#deltaTime      = TIME_EPSILON * 0.001;
 
         this.#keysDown1 = new Set();
@@ -352,15 +354,14 @@ export class RaylibBindings extends Binding {
             });
         });
 
-        const syncTime = (this.#lastFrameTime + this.#nextFrameDelta) - timeNow();
-        const syncPromise = syncTime > 0 ? new Promise(res => setTimeout(res, syncTime)) : null;
-
         const stopSignal = context.stopSignal;
         await Promise.any([
-            Promise.all([ framePromise, syncPromise ]),
+            Promise.all([ framePromise, this.#syncPromise ]),
             stopSignal.waitStop()
         ]);
         stopSignal.handleRequest();
+
+        this.#syncPromise = new Promise(resolve => setTimeout(resolve, this.#nextFrameDelta));
 
         const thisFrameTime = timeNow();
         const deltaTime     = thisFrameTime - this.#lastFrameTime;
