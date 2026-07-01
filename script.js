@@ -82,6 +82,8 @@ window.addEventListener("load", async () => {
     attachStepFunction("debug-step-over", StepKind.StepOver);
     attachStepFunction("debug-step-into", StepKind.StepInto);
     attachStepFunction("debug-step-out",  StepKind.StepOut);
+    attachStepFunction("debug-step-continue", StepKind.Continue);
+    attachStepFunction("debug-step-pause",    StepKind.Pause);
 
     const runScript = async (fileName, buffer) => {
         debugStep = undefined;

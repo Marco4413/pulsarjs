@@ -53,12 +53,28 @@ export class ScriptHooks {
     }
 }
 
+/**
+ * a clone of `Promise.withResolvers()` because it was implemented in 2024, see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/withResolvers#browser_compatibility
+ * @template T
+ * @returns {{ promise: Promise<T>, resolve: (value: T) => void, reject: (reason?: any) => void }}
+ */
+function promiseWithResolvers() {
+    let resolve, reject;
+    const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject  = rej;
+    });
+    return { promise, resolve, reject };
+}
+
 /** @enum {number} */
 export const StepKind = Object.freeze({
     Instruction: 0,
     StepOver:    1,
     StepInto:    2,
     StepOut:     3,
+    Continue:    4,
+    Pause:       5,
 });
 
 export class PulsarScript {
@@ -147,6 +163,8 @@ export class PulsarScript {
                 || prevDebugState.codeDebugSymbol.token.sourcePosition.line !== currDebugState.codeDebugSymbol.token.sourcePosition.line;
         case StepKind.StepOut:
             return currDebugState.callStackLength < prevDebugState.callStackLength;
+        case StepKind.Continue: return false;
+        case StepKind.Pause:    return true;
         default:
             throw new Error(`unhandled stepKind ${stepKind}`);
         }
@@ -160,24 +178,20 @@ export class PulsarScript {
         if (this.#running) return null;
         this.#running = true;
 
-        let doStep, stepPromise;
-        const step = (stepKind) => {
-            if (doStep != null) {
-                doStep(stepKind);
-                return stepPromise;
+        let step = promiseWithResolvers();
+        let next = promiseWithResolvers();
+
+        let stepRequested = false;
+        let stepKind = StepKind.Pause;
+        const stepFn = (newStepKind) => {
+            if (next != null) {
+                stepRequested = true;
+                stepKind = newStepKind ?? StepKind.Pause;
+                next.resolve();
+                return step.promise;
             }
             return Promise.resolve(false);
         };
-
-        let stepResolve, stepReject;
-        stepPromise = new Promise((resolve, reject) => {
-            stepResolve = resolve;
-            stepReject  = reject;
-        });
-
-        let doStepPromise = new Promise(resolve => {
-            doStep = resolve;
-        });
 
         frameReportOptions = { ...(frameReportOptions ?? {}) };
         frameReportOptions.showFullCursor = true;
@@ -187,63 +201,60 @@ export class PulsarScript {
             try {
                 this.#context.callFunctionByName("main");
 
-                let stepKind, prevDebugState;
+                let prevDebugState;
                 while (!this.#context.isDone) {
-                    if (stepKind == null) {
+                    if (stepKind === StepKind.Pause) {
+                        if (stepRequested) {
+                            step.resolve(true);
+                            step = promiseWithResolvers();
+                            stepRequested = false;
+                        }
+
                         this.report(this.#context.getStateReport(this.#callStackDepth, frameReportOptions));
 
-                        await Promise.any([
-                            doStepPromise.then(requestedStepKind => {
-                                stepKind = requestedStepKind ?? StepKind.Instruction;
-                            }),
-                            this.#stopSignal.waitStop(),
-                        ]);
+                        await Promise.any([ next.promise, this.#stopSignal.waitStop() ]);
+                        this.#stopSignal.handleRequest();
+                        next = promiseWithResolvers();
 
-                        doStepPromise = new Promise(resolve => {
-                            doStep = resolve;
-                        });
-
-                        if (stepKind === StepKind.Instruction) {
+                        // show the full cursor when the user explicitly asks to pause.
+                        // if you continue, when pause is issued the full cursor won't be shown (expected behaviour);
+                        // if the user wants to see the next instruction, it's as simple as asking to pause again
+                        if (stepKind === StepKind.Instruction || stepKind === StepKind.Pause) {
+                            // no need to calc prevDebugState
                             prevDebugState = undefined;
                             frameReportOptions.showFullCursor = true;
                         } else {
                             prevDebugState = this.#getDebugState(frameReportOptions.instructionIndexOffset);
                             frameReportOptions.showFullCursor = false;
                         }
-                    }
-
-                    this.#stopSignal.handleRequest();
-                    await this.#context.step(this.#stopSignal);
-
-                    if (this.#stepRequiresAction(stepKind, prevDebugState, this.#getDebugState(frameReportOptions.instructionIndexOffset))) {
-                        stepKind = undefined;
-
-                        stepResolve(!this.#context.isDone);
-                        stepPromise = new Promise((resolve, reject) => {
-                            stepResolve = resolve;
-                            stepReject  = reject;
-                        });
+                    } else {
+                        await this.#context.step(this.#stopSignal);
+                        if (this.#stepRequiresAction(stepKind, prevDebugState, this.#getDebugState(frameReportOptions.instructionIndexOffset))) {
+                            stepKind = StepKind.Pause;
+                        }
                     }
                 }
 
+                step.resolve(false);
                 this.report("execution completed");
             } catch (error) {
                 if (this.#stopSignal.isStopping) {
-                    stepResolve(false);
+                    step.resolve(false);
                 } else {
-                    stepReject(error);
+                    step.reject(error);
                     frameReportOptions.showFullCursor = true;
                     frameReportOptions.instructionIndexOffset = 0;
                     this.report(this.#context.getErrorReport(error, this.#callStackDepth, frameReportOptions));
                 }
             } finally {
-                doStep = stepPromise = stepResolve = stepReject = doStepPromise = undefined;
+                step = undefined;
+                next = undefined;
                 this.#stopSignal.complete();
                 this.#running = false;
             }
         })();
 
-        return step;
+        return stepFn;
     }
 
     onReport(listener) {
