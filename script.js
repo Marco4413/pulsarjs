@@ -55,6 +55,7 @@ window.addEventListener("load", async () => {
 
     /** @type {HTMLSelectElement} */
     const $examplePicker = document.getElementById("example-picker");
+    const $exampleShare  = document.getElementById("example-share");
 
     /** @type {HTMLLabelElement} */
     const $scriptLabel = document.getElementById("script-label");
@@ -132,4 +133,39 @@ window.addEventListener("load", async () => {
     clearScriptPicker();
     $examplePicker.addEventListener("change", () => runFromExamplePicker());
     $scriptPicker.addEventListener("input", () => runFromScriptPicker());
+
+    /** @param {HTMLOptionElement} $option */
+    const getExampleName = ($option) => {
+        return $option.innerText.replaceAll(/\s+/g, "").toLowerCase();
+    };
+
+    $exampleShare.addEventListener("click", () => {
+        if ($examplePicker.value.length <= 0) return;
+        const $option = $examplePicker.options.item($examplePicker.selectedIndex);
+
+        const url = new URL(document.location);
+        url.searchParams.set("example", getExampleName($option));
+        window.location.replace(url);
+    });
+
+    {
+        const url = new URL(document.location);
+        const example = url.searchParams.get("example")?.toLowerCase();
+        if (example != null) {
+            console.log(`Loading '${example}' from URL`);
+            let exampleFound = false;
+            for (let index = 0; index < $examplePicker.options.length; index++) {
+                const $option = $examplePicker.options.item(index);
+                if (getExampleName($option) === example) {
+                    exampleFound = true;
+                    $examplePicker.selectedIndex = index;
+                    runFromExamplePicker();
+                    break;
+                }
+            }
+            if (!exampleFound) {
+                console.warn(`Could not load '${example}', it's not a valid example`);
+            }
+        }
+    }
 });
