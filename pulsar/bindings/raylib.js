@@ -1,5 +1,5 @@
 import { Binding } from "../binding.js";
-import { Value, ValueTypeError, valueTypeToString } from "../runtime.js";
+import { Value, ValueTypeError, valueTypeToString, customTypeToString } from "../runtime.js";
 
 /** @import { ClickEvent, KeyboardEvent } from '../binding.js'; */
 /** @import { ExecutionContext, Module } from '../runtime.js'; */
@@ -50,6 +50,8 @@ const TIME_EPSILON = 1;
 const timeNow = () => performance.now();
 
 export class RaylibBindings extends Binding {
+    #soundTypeId;
+
     #$window;
     #$title;
     #$screen;
@@ -73,9 +75,13 @@ export class RaylibBindings extends Binding {
     #windowMinimized;
     #windowCloseRequest;
 
+    #workingDirectory;
+
     /** @param {Module} module */
     constructor(module) {
         super(module);
+        this.#soundTypeId = null;
+
         const $window     = document.createElement("div");
         const $titleBar   = document.createElement("div");
         const $title      = document.createElement("p");
@@ -119,9 +125,13 @@ export class RaylibBindings extends Binding {
         this.#windowMinimized = false;
         this.#windowCloseRequest = false;
 
+        this.#workingDirectory = "/";
+
         $minimize.addEventListener("click", () => this.setWindowMinimized(!this.windowMinimized));
         $close.addEventListener("click", () => this.requestWindowClose());
     }
+
+    get soundTypeId() { return this.#soundTypeId; }
 
     get $window()         { return this.#$window;         }
     get windowFocus()     { return this.#windowFocus;     }
@@ -174,6 +184,8 @@ export class RaylibBindings extends Binding {
     }
 
     bind() {
+        this.#soundTypeId ??= this.module.bindCustomType("Raylib/Sound");
+
         this.module.bindNativeByName("raylib/init-window!",         context => this.#initWindow(context));
         this.module.bindNativeByName("raylib/set-target-fps!",      context => this.#setTargetFps(context));
         this.module.bindNativeByName("raylib/get-frame-time",       context => this.#getFrameTime(context));
@@ -190,6 +202,16 @@ export class RaylibBindings extends Binding {
         this.module.bindNativeByName("raylib/end-drawing!",      context => this.#endDrawing(context));
 
         this.module.bindNativeByName("raylib/is-key-pressed?", context => this.#isKeyPressed(context));
+
+        this.module.bindNativeByName("raylib/get-directory-path", context => this.#getDirectoryPath(context));
+        this.module.bindNativeByName("raylib/change-directory",   context => this.#changeDirectory(context));
+
+        this.module.bindNativeByName("raylib/init-audio-device!",  context => this.#initAudioDevice(context));
+        this.module.bindNativeByName("raylib/close-audio-device!", context => this.#closeAudioDevice(context));
+        this.module.bindNativeByName("raylib/load-sound",          context => this.#loadSound(context));
+        this.module.bindNativeByName("raylib/unload-sound!",       context => this.#unloadSound(context));
+        this.module.bindNativeByName("raylib/set-sound-volume!",   context => this.#setSoundVolume(context));
+        this.module.bindNativeByName("raylib/play-sound!",         context => this.#playSound(context));
     }
 
     /** @param {Value} color */
@@ -212,6 +234,15 @@ export class RaylibBindings extends Binding {
         }
         if (keyOrKeyCode == null) return false;
         return !this.#keysDown1.has(keyOrKeyCode) && this.#keysDown2.has(keyOrKeyCode);
+    }
+
+    /** @param {string} path */
+    #normalizePathImpl(path) {
+        return path
+                .split("/")
+                .filter(comp => comp.length > 0)
+                .map(encodeURIComponent)
+                .join("/");
     }
 
     /** @param {ExecutionContext} context */
@@ -370,9 +401,7 @@ export class RaylibBindings extends Binding {
         this.#deltaTime = deltaTime * 0.001;
     }
 
-    /**
-     * @param {ExecutionContext} context
-     */
+    /** @param {ExecutionContext} context */
     #isKeyPressed(context) {
         const frame = context.currentFrame;
         const [ key ] = frame.locals;
@@ -380,5 +409,82 @@ export class RaylibBindings extends Binding {
         const keyCode = Number(key.value);
 
         context.currentFrame.stack.push(Value.fromInteger(this.#isKeyPressedImpl(keyCode) ? 1 : 0));
+    }
+
+    /** @param {ExecutionContext} context */
+    #getDirectoryPath(context) {
+        const frame = context.currentFrame;
+        const [ filePath ] = frame.locals;
+        if (!filePath.isString()) throw new ValueTypeError(`expected String for filePath, got ${valueTypeToString(filePath.type)}`);
+
+        const filePathV = this.#normalizePathImpl(filePath.value);
+        const lastCompIdx = filePathV.lastIndexOf("/");
+        frame.stack.push(Value.fromString(
+                lastCompIdx >= 0 ? filePathV.substring(0, lastCompIdx) : ""));
+    }
+
+    /** @param {ExecutionContext} context */
+    #changeDirectory(context) {
+        const frame = context.currentFrame;
+        const [ dir ] = frame.locals;
+        if (!dir.isString()) throw new ValueTypeError(`expected String for dir, got ${valueTypeToString(dir.type)}`);
+
+        this.#workingDirectory = this.#normalizePathImpl(dir.value);
+        if (!this.#workingDirectory.endsWith("/"))
+            this.#workingDirectory += "/";
+        frame.stack.push(Value.fromInteger(1));
+    }
+
+    #initAudioDevice(context) {}
+    #closeAudioDevice(context) {}
+
+    /** @param {ExecutionContext} context */
+    #loadSound(context) {
+        const frame = context.currentFrame;
+        const [ soundPath ] = frame.locals;
+        if (!soundPath.isString()) throw new ValueTypeError(`expected String for soundPath, got ${valueTypeToString(soundPath.type)}`);
+
+        const soundPathV = this.#normalizePathImpl(soundPath.value);
+        const fullSoundPath = this.#workingDirectory + "/" + soundPathV;
+        const audio = new Audio(fullSoundPath);
+        frame.stack.push(Value.fromCustom({ typeId: this.#soundTypeId, data: { audio } }));
+    }
+
+    /** @param {ExecutionContext} context */
+    #unloadSound(context) {
+        const frame = context.currentFrame;
+        const [ sound ] = frame.locals;
+        if (!sound.isCustomOf(this.soundTypeId))
+            throw new ValueTypeError(`expected Raylib/Sound for sound, got ${sound.typeToString(context.module)}`);
+
+        const soundData = sound.value.data;
+        if (soundData.audio == null) return;
+        soundData.audio.pause();
+        soundData.audio = null;
+    }
+
+    /** @param {ExecutionContext} context */
+    #setSoundVolume(context) {
+        const frame = context.currentFrame;
+        const [ sound, volume ] = frame.locals;
+        if (!sound.isCustomOf(this.soundTypeId))
+            throw new ValueTypeError(`expected Raylib/Sound for sound, got ${sound.typeToString(context.module)}`);
+        if (!volume.isNumber()) throw new ValueTypeError(`expected Number for volume, got ${valueTypeToString(volume.type)}`);
+
+        const soundData = sound.value.data;
+        if (soundData.audio == null) return;
+        soundData.audio.volume = volume.value;
+    }
+
+    /** @param {ExecutionContext} context */
+    #playSound(context) {
+        const frame = context.currentFrame;
+        const [ sound ] = frame.locals;
+        if (!sound.isCustomOf(this.soundTypeId))
+            throw new ValueTypeError(`expected Raylib/Sound for sound, got ${sound.typeToString(context.module)}`);
+
+        const soundData = sound.value.data;
+        if (soundData.audio == null) return;
+        soundData.audio.play();
     }
 }
