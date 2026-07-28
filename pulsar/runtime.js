@@ -423,6 +423,14 @@ export class Module {
         return [ this.#nativeBindings[index], this.#nativeFunctions[index] ];
     }
 
+    /**
+     * @param {number} typeId
+     * @returns {CustomType?}
+     */
+    getCustomType(typeId) {
+        return this.#customTypes.get(typeId) ?? null;
+    }
+
     /** @returns {GlobalInstance[]} */
     createGlobals() {
         return this.#globals.map(definition => ({
@@ -600,6 +608,14 @@ function cloneValueList(list) {
  * @property {any} data
  */
 
+/**
+ * @param {Module} module
+ * @param {number} typeId
+ */
+export function customTypeToString(module, typeId) {
+    return module.getCustomType(typeId)?.name ?? `@Custom(${typeId})`;
+}
+
 export class Value {
     /** @type {ValueType} */ #type;
     /** @type {undefined|number|string|Value[]|CustomValue} */ #value;
@@ -627,6 +643,12 @@ export class Value {
     get type()   { return this.#type;  }
     get value()  { return this.#value; }
     get sValue() { return valueTypeToString(this.value); }
+
+    /** @param {Module} module */
+    typeToString(module) {
+        if (!this.isCustom()) return valueTypeToString(this.#type);
+        return customTypeToString(module, this.#value.typeId);
+    }
 
     setVoid() {
         this.#type  = ValueType.Void;

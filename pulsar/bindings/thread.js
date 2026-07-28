@@ -77,7 +77,7 @@ export class ThreadBindings extends Binding {
         const frame = context.currentFrame;
         const [ thread ] = frame.locals;
         if (!thread.isCustomOf(this.threadTypeId))
-            throw new ValueTypeError(`expected PulsarJS/Thread for thread, got ${valueTypeToString(thread.type)}`);
+            throw new ValueTypeError(`expected PulsarJS/Thread for thread, got ${thread.typeToString(context.module)}`);
         const stopSignal = context.stopSignal;
         const threadData = thread.value.data;
         const threadStopSignal = threadData.thread.stopSignal;
@@ -126,7 +126,7 @@ export class ChannelBindings extends Binding {
         const frame = context.currentFrame;
         const [ value, channel ] = frame.locals;
         if (!channel.isCustomOf(this.channelTypeId))
-            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${valueTypeToString(channel.type)}`);
+            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${channel.typeToString(context.module)}`);
         const channelData = channel.value.data;
         if (channelData.closed) return;
         channelData.pipe.unshift(value);
@@ -137,7 +137,7 @@ export class ChannelBindings extends Binding {
         const frame = context.currentFrame;
         const [ channel ] = frame.locals;
         if (!channel.isCustomOf(this.channelTypeId))
-            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${valueTypeToString(channel.type)}`);
+            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${channel.typeToString(context.module)}`);
 
         const stopSignal  = context.stopSignal;
         const channelData = channel.value.data;
@@ -161,7 +161,7 @@ export class ChannelBindings extends Binding {
         const frame = context.currentFrame;
         const [ channel ] = frame.locals;
         if (!channel.isCustomOf(this.channelTypeId))
-            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${valueTypeToString(channel.type)}`);
+            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${channel.typeToString(context.module)}`);
         const channelData = channel.value.data;
         channelData.closed = true;
     }
@@ -171,7 +171,7 @@ export class ChannelBindings extends Binding {
         const frame = context.currentFrame;
         const [ channel ] = frame.locals;
         if (!channel.isCustomOf(this.channelTypeId))
-            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${valueTypeToString(channel.type)}`);
+            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${channel.typeToString(context.module)}`);
         const channelData = channel.value.data;
         frame.stack.push(Value.fromInteger(channelData.pipe.length > 0 ? 0 : 1));
     }
@@ -181,7 +181,7 @@ export class ChannelBindings extends Binding {
         const frame = context.currentFrame;
         const [ channel ] = frame.locals;
         if (!channel.isCustomOf(this.channelTypeId))
-            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${valueTypeToString(channel.type)}`);
+            throw new ValueTypeError(`expected PulsarJS/Channel for channel, got ${channel.typeToString(context.module)}`);
         const channelData = channel.value.data;
         frame.stack.push(Value.fromInteger(channelData.closed ? 1 : 0));
     }
